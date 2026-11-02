@@ -125,22 +125,33 @@ const badgeOf = (key) => {
   return Number.isFinite(n) && n > 0 ? n : 0;
 };
 
-// The width N buttons need: their padding, icon and gap, and the label. Text
-// has no measurement API here, so the label is letters × an average advance —
-// 5.9 px at 12 px on this bar, measured off a real render rather than guessed.
-// The row's buttons are pinned to its right edge, so being short by a few
-// pixels only slides the button over the tail of the tab strip (no clipping,
-// no label lost) while being long leaves a visible hole between the shipped
-// buttons and these. Short it is, then.
+// The width the buttons block needs: the row's own padding, then per button its
+// padding, icon and gap and label, then the gaps between buttons. Text has no
+// measurement API here, so the label is letters × an average advance — 5.9 px
+// at 12 px on this bar, measured off a real render rather than guessed — and
+// rounded up.
+//
+// The row's px(6) on each side counts, and used to be left out: the block is
+// set to exactly this width, so a row 12 px wider than its block — with the
+// buttons pinned to its right edge — has its excess pushed off the *left*,
+// where the block clips it. That cut the left of the first button's pill, the
+// highlighted tab: a squared-off corner, the icon sitting 2 px from the edge
+// instead of the 8 px its padding asks for.
+//
+// The estimate rounds up for the same reason: the two ways of being wrong are
+// not equal. A pixel or two over leaves that much of the row's own background
+// between the shipped tab strip and these buttons, which nobody can see; a
+// pixel or two under is a clipped pill, which they can.
 //
 // A button drawing a badge adds that chip's width and its gap — only while it
 // is drawing one, or a count that has gone away leaves just such a hole. The
 // chip's width is fixed rather than derived from the count, so a number going
 // 3 → 4 doesn't resize the bar under the cursor.
+const ROW_PX = 12; // the row's own px(6), left and right
 function widthOf(entries) {
   if (!entries.length) return 0;
-  const one = (e) => 16 + (e.icon ? 19 : 0) + Math.round(e.title.length * 5.9) + (badgeOf(e.badge) ? 26 : 0);
-  return entries.reduce((acc, e) => acc + one(e), 0) + 3 * (entries.length - 1);
+  const one = (e) => 16 + (e.icon ? 19 : 0) + Math.ceil(e.title.length * 5.9) + (badgeOf(e.badge) ? 26 : 0);
+  return ROW_PX + entries.reduce((acc, e) => acc + one(e), 0) + 3 * (entries.length - 1);
 }
 
 // The one file this mod rewrites: read what is there, write the new whole.
@@ -383,7 +394,7 @@ export default class TabHost extends View {
           .bg(t.accent).text_color(t.accent_foreground).text_size(9.5)
           .child(n > 9 ? "9+" : String(n))));
     };
-    return h_flex().size_full().justify_end().px(6).gap(3).items_center()
+    return h_flex().size_full().justify_end().px(ROW_PX / 2).gap(3).items_center()
       .children(entries.map(button));
   }
 }
