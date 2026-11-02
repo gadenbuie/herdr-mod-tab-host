@@ -124,16 +124,22 @@ const badgeOf = (key) => {
   return Number.isFinite(n) && n > 0 ? n : 0;
 };
 
-// The width N buttons need: padding, icon, gap, and about six pixels a letter
-// at 12 px. A little over is fine; a little under truncates a label. A button
-// drawing a badge gets that chip's width and gap on top — only while it is
-// drawing one, or a count that has gone away leaves a hole between the shipped
-// buttons and these. The chip's width is fixed rather than measured from the
-// count, so a number going 3 → 4 doesn't resize the bar under the cursor.
+// The width N buttons need: their padding, icon and gap, and the label. Text
+// has no measurement API here, so the label is letters × an average advance —
+// 5.9 px at 12 px on this bar, measured off a real render rather than guessed.
+// The row's buttons are pinned to its right edge, so being short by a few
+// pixels only slides the button over the tail of the tab strip (no clipping,
+// no label lost) while being long leaves a visible hole between the shipped
+// buttons and these. Short it is, then.
+//
+// A button drawing a badge adds that chip's width and its gap — only while it
+// is drawing one, or a count that has gone away leaves just such a hole. The
+// chip's width is fixed rather than derived from the count, so a number going
+// 3 → 4 doesn't resize the bar under the cursor.
 function widthOf(entries) {
   if (!entries.length) return 0;
-  const one = (e) => 16 + (e.icon ? 19 : 0) + Math.round(e.title.length * 6.2) + (badgeOf(e.badge) ? 26 : 0);
-  return entries.reduce((acc, e) => acc + one(e), 0) + 6 + 3 * (entries.length - 1);
+  const one = (e) => 16 + (e.icon ? 19 : 0) + Math.round(e.title.length * 5.9) + (badgeOf(e.badge) ? 26 : 0);
+  return entries.reduce((acc, e) => acc + one(e), 0) + 3 * (entries.length - 1);
 }
 
 // The one file this mod rewrites: read what is there, write the new whole.
