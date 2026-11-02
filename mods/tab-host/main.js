@@ -115,14 +115,24 @@ function myBlock(root) {
 
 const pretty = (name) => name.charAt(0).toUpperCase() + name.slice(1);
 
+// The number a contributor publishes for its own badge key: read here, never
+// computed here. Missing, not a number, or zero means no chip — every caller
+// asks this, so the chip and the room it needs can't disagree.
+const badgeOf = (key) => {
+  if (!key) return 0;
+  const n = Math.floor(Number(shared(key) ?? 0));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
 // The width N buttons need: padding, icon, gap, and about six pixels a letter
 // at 12 px. A little over is fine; a little under truncates a label. A button
-// that may carry a badge gets that chip's width and gap on top — a fixed
-// reserve rather than the count itself, so a number changing doesn't resize
-// the bar under the person's cursor.
+// drawing a badge gets that chip's width and gap on top — only while it is
+// drawing one, or a count that has gone away leaves a hole between the shipped
+// buttons and these. The chip's width is fixed rather than measured from the
+// count, so a number going 3 → 4 doesn't resize the bar under the cursor.
 function widthOf(entries) {
   if (!entries.length) return 0;
-  const one = (e) => 16 + (e.icon ? 19 : 0) + Math.round(e.title.length * 6.2) + (e.badge ? 26 : 0);
+  const one = (e) => 16 + (e.icon ? 19 : 0) + Math.round(e.title.length * 6.2) + (badgeOf(e.badge) ? 26 : 0);
   return entries.reduce((acc, e) => acc + one(e), 0) + 6 + 3 * (entries.length - 1);
 }
 
@@ -248,7 +258,7 @@ export default class TabHost extends View {
       } else {
         this.wrote = null;
       }
-      this.fit(list, extra);
+      this.fit();
     } catch (e) {
       this.warn = String(e?.message ?? e);
       console.log("tab-host: reconcile —", this.warn);
@@ -262,18 +272,23 @@ export default class TabHost extends View {
   // Keep the buttons block as wide as its buttons. The width asked for is
   // remembered (this.px), not read back: layout() can be stale on a copy's
   // first pass, and layout.resize is cheap and idempotent, so asking once
-  // per width change beats measuring.
-  async fit(list, extra) {
+  // per width change beats measuring. It reads the last scan and the live
+  // shared list rather than taking them, so render() can ask for a refit when
+  // a badge appears or goes away — the one thing that changes a button's width
+  // without the mods folder changing.
+  async fit() {
     const block = myBlock(layout());
     if (!block) {
       this.warn = "fit: the buttons block is not in the live layout";
       return;
     }
+    const list = Object.values(this.mani ?? {});
+    const extra = shared("tabhost.panels");
     const extraNames = Array.isArray(extra) ? extra : [];
     const entries = [
       ...list,
       ...extraNames.filter((n) => typeof n === "string" && !list.some((m) => m.name === n))
-        .map((n) => ({ name: n, title: pretty(n), icon: null })),
+        .map((n) => ({ name: n, title: pretty(n), icon: null, badge: null })),
     ].filter((e) => e.name !== "tab-host");
     const want = widthOf(entries);
     if (want !== this.px) {
@@ -297,7 +312,7 @@ export default class TabHost extends View {
       .catch((e) => console.log("tab-host: log —", e?.message ?? e));
   }
 
-  render() {
+  render(cx) {
     const t = theme();
     const root = layout();
     const stack = myStack(root);
@@ -314,22 +329,31 @@ export default class TabHost extends View {
         return { id: c.id, mod, title: m?.title ?? pretty(mod),
                  icon: m?.icon ?? null, badge: m?.badge ?? null };
       });
+    // A chip needs room, and a chip is the one thing that appears and goes
+    // without the mods folder changing, so the block is re-fitted here when the
+    // count of chips changes — once per change, not per number: `setShared`
+    // re-renders every copy, which is this notice, and no timer is involved.
+    const chips = entries.filter((e) => badgeOf(e.badge) > 0).length;
+    if (this.chips !== chips) {
+      this.chips = chips;
+      cx?.spawn?.(async () => {
+        this.wrote = null;
+        await this.fit();
+        // A resize nobody can see in the log is the same blindness a dead key
+        // had, so say why the bar changed width this time.
+        this.tell("refit for " + chips + " badge" + (chips === 1 ? "" : "s"));
+        cx.notify();
+      });
+    }
     const glyph = (icon, color) => {
       if (!icon) return null;
       const el = icon.endsWith(".svg") ? svg(icon) : image(icon);
       return el.size(14).flex_none().text_color(color);
     };
-    // The number a contributor publishes for its own badge key: read here,
-    // never computed here. Missing, not a number, or zero draws nothing.
-    const count = (key) => {
-      if (!key) return 0;
-      const n = Math.floor(Number(shared(key) ?? 0));
-      return Number.isFinite(n) && n > 0 ? n : 0;
-    };
     const button = (e) => {
       const on = shown && active === e.id;
       const color = on ? t.foreground : t.muted;
-      const n = count(e.badge);
+      const n = badgeOf(e.badge);
       return h_flex().id(`th-${e.id}`).h(26).px(8).gap(5).flex_none().items_center().rounded(6)
         .text_size(12).when(on, (el) => el.bg(t.selected)).text_color(color)
         .hover((s) => s.bg(t.hover))
