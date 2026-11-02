@@ -37,6 +37,13 @@
 // chip after the button's label, where it stays visible with the panel hidden.
 // This copy never counts anything itself.
 //
+// `tab.order` is a number that says where the button goes among the
+// contributors: smaller is further left. Missing — or a manifest that never
+// mentions it — sorts as 100, and ties fall back to the title, so the bar reads
+// the way it did before anyone ordered anything. Files and Changes keep their
+// own buttons (the shipped tabs mod draws those), so this orders the
+// contributors among themselves and nothing else.
+//
 // `tab-host.toggle:<mod>` opens that mod's tab or closes it again, for a key
 // bound to it in keys.json (`"cmd-alt-shift-i": "tab-host.toggle:tab-notes"`).
 // It has to
@@ -71,6 +78,19 @@ function find(node, id) {
 // The manifest is "tab"; herdrdev/herdr-app#246 proposes "button" for the same
 // idea in the core, so either key joins here — one mod, one field, and the
 // same field keeps working if the core takes the idea over.
+//
+// Where a contributor's button goes in the bar when there is more than one:
+// `tab.order`, a number, smaller first. Missing or not a number sorts as 100,
+// so a mod that never asked sits in the middle and one that wants the left end
+// picks something smaller. Ties — the usual case, since most manifests say
+// nothing — fall back to the title, which is the order the bar had before this
+// field existed. A name a person added by hand (shared("tabhost.panels")) has
+// no manifest, so it gets the default order and its prettied name as a title.
+const DEFAULT_ORDER = 100;
+const orderOf = (n) => (typeof n === "number" && Number.isFinite(n) ? n : DEFAULT_ORDER);
+const byOrder = (a, b) =>
+  a.order - b.order || a.title.localeCompare(b.title) || a.name.localeCompare(b.name);
+
 async function manifests() {
   const root = appHome() + "/mods";
   let names;
@@ -84,10 +104,11 @@ async function manifests() {
       if (tab && typeof tab === "object" && typeof tab.title === "string")
         out.push({ name, title: tab.title,
                    icon: typeof tab.icon === "string" ? tab.icon : null,
-                   badge: typeof tab.badge === "string" ? tab.badge : null });
+                   badge: typeof tab.badge === "string" ? tab.badge : null,
+                   order: orderOf(tab.order) });
     } catch { /* not a contributor */ }
   }
-  out.sort((a, b) => a.title.localeCompare(b.title));
+  out.sort(byOrder);
   return out;
 }
 
@@ -115,6 +136,22 @@ function myBlock(root) {
 }
 
 const pretty = (name) => name.charAt(0).toUpperCase() + name.slice(1);
+
+// Every contributor the bar draws, in bar order: the manifests the last scan
+// found, plus any name a person added by hand with shared("tabhost.panels").
+// Both callers want the same list in the same order — the reconciler writes it
+// as the stack's children, and fit() measures the widths it needs — so it is
+// one function rather than two that could disagree.
+function ordered(mani, extra) {
+  const list = Object.values(mani ?? {});
+  const have = new Set(list.map((m) => m.name));
+  for (const n of Array.isArray(extra) ? extra : [])
+    if (typeof n === "string" && !have.has(n)) {
+      have.add(n);
+      list.push({ name: n, title: pretty(n), icon: null, badge: null, order: DEFAULT_ORDER });
+    }
+  return list.filter((e) => e.name !== "tab-host").sort(byOrder);
+}
 
 // The number a contributor publishes for its own badge key: read here, never
 // computed here. Missing, not a number, or zero means no chip — every caller
@@ -261,14 +298,19 @@ export default class TabHost extends View {
       if (!stack || stack.type !== "stack") return;
       this.warn = null;
       const kept = (stack.children ?? []).filter((c) => !String(c.id ?? "").startsWith("tabhost-"));
-      const have = new Set(kept.map((c) => c.content?.mod).filter(Boolean));
-      const extra = shared("tabhost.panels");
-      const names = [
-        ...list.map((m) => m.name),
-        ...(Array.isArray(extra) ? extra.filter((n) => typeof n === "string") : []),
-      ];
-      const add = [...new Set(names)].filter((n) => n !== "tab-host" && !have.has(n));
-      const wanted = [...kept, ...add.map((n) => ({ id: "tabhost-" + n, type: "block", content: { mod: n } }))];
+      const hand = new Set(kept.map((c) => c.content?.mod).filter(Boolean));
+      // The contributors in bar order, so the children are written in the order
+      // the buttons are read in and nothing has to sort them at draw time. A
+      // contributor already in the stack keeps its own node — only its place
+      // moves — and one already there under a hand-written id is left alone.
+      const ours = new Map((stack.children ?? [])
+        .filter((c) => String(c.id ?? "").startsWith("tabhost-"))
+        .map((c) => [c.content?.mod, c]));
+      const wanted = [...kept];
+      for (const e of ordered(this.mani, shared("tabhost.panels")))
+        if (!hand.has(e.name))
+          wanted.push(ours.get(e.name)
+            ?? { id: "tabhost-" + e.name, type: "block", content: { mod: e.name } });
       const before = (stack.children ?? []).map((c) => c.id).join("|");
       const after = wanted.map((c) => c.id).join("|");
       if (before !== after && after !== this.written) {
@@ -276,6 +318,12 @@ export default class TabHost extends View {
         stack.children = wanted;
         await run("layout.set", { layout: tree });
         this.wrote = "set [" + after + "]";
+        // The tree just set carries the width the layout *file* authored, which
+        // is the seed wire.py wrote, not the width this copy last asked for — so
+        // forget it and let the fit below ask again. Without this, a set (a mod
+        // installed, removed, or reordered) narrows the block to the seed and no
+        // later fit notices, because this.px still names the wider one.
+        this.px = null;
       } else {
         this.wrote = null;
       }
@@ -303,14 +351,7 @@ export default class TabHost extends View {
       this.warn = "fit: the buttons block is not in the live layout";
       return;
     }
-    const list = Object.values(this.mani ?? {});
-    const extra = shared("tabhost.panels");
-    const extraNames = Array.isArray(extra) ? extra : [];
-    const entries = [
-      ...list,
-      ...extraNames.filter((n) => typeof n === "string" && !list.some((m) => m.name === n))
-        .map((n) => ({ name: n, title: pretty(n), icon: null, badge: null })),
-    ].filter((e) => e.name !== "tab-host");
+    const entries = ordered(this.mani, shared("tabhost.panels"));
     const want = widthOf(entries);
     if (want !== this.px) {
       this.px = want;
@@ -347,9 +388,14 @@ export default class TabHost extends View {
       .map((c) => {
         const mod = c.content?.mod ?? "";
         const m = this.mani[mod];
-        return { id: c.id, mod, title: m?.title ?? pretty(mod),
-                 icon: m?.icon ?? null, badge: m?.badge ?? null };
-      });
+        return { id: c.id, name: mod, title: m?.title ?? pretty(mod),
+                 order: orderOf(m?.order), icon: m?.icon ?? null, badge: m?.badge ?? null };
+      })
+      // The reconciler writes the children in bar order; sorting again here is
+      // what the gap between a manifest changing and the next layout.set gets,
+      // and it makes the buttons independent of how the stack happens to be
+      // stored in some layout file.
+      .sort(byOrder);
     // A chip needs room, and a chip is the one thing that appears and goes
     // without the mods folder changing, so the block is re-fitted here when the
     // count of chips changes — once per change, not per number: `setShared`
@@ -383,7 +429,7 @@ export default class TabHost extends View {
         .hover((s) => s.bg(t.hover))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => {
-          if (!this.toggleTab(e.mod)) return;
+          if (!this.toggleTab(e.name)) return;
           cx.notify();
         })
         .when(Boolean(e.icon), (el) => el.child(glyph(e.icon, color)))

@@ -32,6 +32,13 @@ A contributor is an ordinary mod in this repo's `mods/<name>/` whose
   re-renders everyone — and let tab-host read it: it renders the number it is
   given and never computes one. Keep the key yours (`<mod>.unread`), since
   two mods writing one map would race.
+- `tab.order` — optional, a number: where your button sits among the other
+  contributors, smaller further left. Missing sorts as 100, and ties fall back
+  to the title, so a manifest that never mentions it joins in the middle,
+  alphabetically. Files and Changes keep their own buttons, so this orders
+  contributors among themselves only. Use it when your tab belongs beside a
+  particular neighbour (a review tab next to the diff, say); leave it out
+  otherwise and don't tune it byte by byte against a mod you don't own.
 - The same field under the name `button` works too
   (herdrdev/herdr-app#246 proposes that name for the core; either joins).
 - `main.js` — any Herdr mod: default-exports a class extending `View`, with

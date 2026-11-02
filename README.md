@@ -92,6 +92,13 @@ those mods, and **PROMPT.md** holds the one-line prompt a person pastes to
 send an agent at it. `examples/tab-notes/` here is the reference example; third
 parties copy its shape, not its folder.
 
+One more optional field, for a contributor that belongs in a particular place:
+**`tab.order`** is a number, smaller further left. Missing sorts as 100 and
+ties fall back to the title, so the bar reads alphabetically until someone
+asks otherwise, and adding the field to one manifest moves that button and
+leaves the rest where they were. Files and Changes are drawn by the shipped
+`tabs` mod, so this orders the contributors among themselves only.
+
 `herdr`'s `shared("tabhost.panels")` is a second door: a list of extra mod
 names (set with `setShared`, or edited into `shared.json`) for a mod that
 should appear without a manifest.

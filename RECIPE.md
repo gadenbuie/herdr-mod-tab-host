@@ -61,6 +61,11 @@ after its label, and the label is what truncates when the bar runs out of
 room, so the count survives a collapsed panel. `tab-host.toggle:<mod>` is the
 command a key binds: it does what that mod's button does, because `keys.json`
 fills only a command's first argument and a hidden tab's own copy is asleep.
+`order` is a number that places the button among the contributors, smaller
+further left; missing sorts as 100, ties fall back to the title, so a manifest
+that says nothing sits in the alphabet the bar has always used and one that
+asks moves only itself. Files and Changes are the shipped `tabs` mod's
+drawing, so `order` sorts contributors among themselves.
 
 **The buttons** (`mods/tab-host/main.js`, the copy in the tab bar): draws one
 button per contributor — the stack's `tabhost-*` children — styled after the
@@ -100,8 +105,15 @@ keeps the stack's children in step with the contributors.
 - Children are matched by id: `tabhost-<mod name>` is managed (added when the
   manifest appears, removed when it goes), every other id is kept untouched.
   A child whose `content.mod` is already in the stack is not added twice.
+- The managed children are written in bar order (`tab.order`, missing as 100,
+  ties by title), so the stack reads the way the buttons do; an existing child
+  keeps its own node and only its place moves. The buttons copy sorts again at
+  render, which covers the gap between a manifest changing and the next
+  `layout.set`.
 - `layout.set` runs only on a real diff, and a memory of the last written id
-  list keeps one state change to one write even if the copy restarts.
+  list keeps one state change to one write even if the copy restarts. A set
+  carries the width the layout *file* authored, so the copy forgets the width
+  it last asked for and fits the block again afterwards.
 - `watchFolder(appHome()/mods)` drives it, so installing a mod shows its
   button at once; a rejected watch falls back to a 5 s poll.
 - On a shipped layout (no `cloned_from`), `layout.set` refuses structural
