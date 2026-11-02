@@ -26,13 +26,32 @@
 // a list of extra mod names, set with setShared from any mod or edited into
 // shared.json.
 //
+// Two more things, both optional and both for any contributor, none of them
+// the contributor's to build:
+//
+//   { "tab": { "title": "Notes", "icon": "mods/notes/icon.svg",
+//              "badge": "notes.unread" } }
+//
+// `tab.badge` names a shared() key the contributor keeps up to date (a count
+// it sets with setShared, which re-renders every mod); this copy draws it as a
+// chip after the button's label, where it stays visible with the panel hidden.
+// This copy never counts anything itself.
+//
+// `tabhost.open:<mod>` does what that mod's button does, for a key bound to it
+// in keys.json (`"cmd-alt-shift-i": "tabhost.open:tab-notes"`). It has to
+// live here: keys.json fills a command's first argument only, so the two
+// commands a click runs (layout.select, layout.show) can't be bound, and a
+// contributor's own copy is asleep whenever its tab is hidden — which is when
+// the key is wanted. This copy is in the always-visible tab bar, so it answers.
+//
 // props: { stack } names the stack whose children the contributors join;
 // { panel } names the column the show/hide buttons toggle; { buttons: true }
 // marks this copy. The reconciler finds its own block for the width fit.
 
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { layout, run, theme, props, appHome, shared, watchFolder, readTextFile, writeTextFile } from "herdr";
+import { layout, run, theme, props, appHome, shared, watchFolder,
+         readTextFile, writeTextFile, nextCommand } from "herdr";
 import * as fs from "fs/promises";
 
 function find(node, id) {
@@ -62,7 +81,9 @@ async function manifests() {
       const meta = JSON.parse(await fs.readFile(root + "/" + name + "/mod.json", "utf8"));
       const tab = meta.tab ?? meta.button;
       if (tab && typeof tab === "object" && typeof tab.title === "string")
-        out.push({ name, title: tab.title, icon: typeof tab.icon === "string" ? tab.icon : null });
+        out.push({ name, title: tab.title,
+                   icon: typeof tab.icon === "string" ? tab.icon : null,
+                   badge: typeof tab.badge === "string" ? tab.badge : null });
     } catch { /* not a contributor */ }
   }
   out.sort((a, b) => a.title.localeCompare(b.title));
@@ -95,10 +116,13 @@ function myBlock(root) {
 const pretty = (name) => name.charAt(0).toUpperCase() + name.slice(1);
 
 // The width N buttons need: padding, icon, gap, and about six pixels a letter
-// at 12 px. A little over is fine; a little under truncates a label.
+// at 12 px. A little over is fine; a little under truncates a label. A button
+// that may carry a badge gets that chip's width and gap on top — a fixed
+// reserve rather than the count itself, so a number changing doesn't resize
+// the bar under the person's cursor.
 function widthOf(entries) {
   if (!entries.length) return 0;
-  const one = (e) => 16 + (e.icon ? 19 : 0) + Math.round(e.title.length * 6.2);
+  const one = (e) => 16 + (e.icon ? 19 : 0) + Math.round(e.title.length * 6.2) + (e.badge ? 26 : 0);
   return entries.reduce((acc, e) => acc + one(e), 0) + 6 + 3 * (entries.length - 1);
 }
 
@@ -113,10 +137,29 @@ async function rewrite(path, text) {
 export default class TabHost extends View {
   init(_props, cx) {
     this.tell("start " + JSON.stringify(props() ?? null));
-    this.mani = {};    // mod name -> { title, icon }, from the last scan
+    this.mani = {};    // mod name -> { title, icon, badge }, from the last scan
     this.written = null; // the child-id list the layout last got, so one state change is one layout.set
     this.px = null;      // the width the buttons last asked for
     this.busy = false;
+    // A key fills one command's first argument, so neither of the two commands
+    // a click runs can be bound; this copy is the always-visible half of the
+    // pair, so it takes the one a key can express and does what the button
+    // does, including the toggle: on the tab already showing, the panel goes
+    // away. Unknown names, a missing stack, a missing panel column: silent
+    // no-ops, the way a mod without a tab is simply not a contributor.
+    cx.spawn(async (cx) => {
+      for (;;) {
+        let command;
+        try { command = String((await nextCommand()) ?? ""); } catch { break; }
+        // Only the buttons copy acts; a layout carrying another copy of this
+        // mod without `buttons` must not answer the same press as well.
+        if (props()?.buttons !== true || !command.startsWith("open:")) continue;
+        const name = command.slice("open:".length);
+        if (!this.openTab(name)) continue;
+        this.tell("open " + name);
+        cx.notify();
+      }
+    });
     cx.spawn(async (cx) => {
       await this.reconcile(cx);
       try {
@@ -130,6 +173,26 @@ export default class TabHost extends View {
         cx.timer.every(5000, (cx) => this.reconcile(cx));
       }
     });
+  }
+
+  // What a contributor's button does, and what `tabhost.open:<mod>` does: show
+  // the panel on that tab, or put the panel away when that tab is already the
+  // one showing. A click and a key both land here, so they can't drift apart.
+  // False for a name that is not in the stack or a props set with no panel:
+  // silent, the way a mod without a tab is simply not a contributor.
+  openTab(name) {
+    const root = layout();
+    const stack = myStack(root);
+    const panel = props()?.panel ? find(root, props().panel) : null;
+    const entry = (stack?.children ?? []).find((c) => c.content?.mod === name);
+    if (!entry || !panel) return false;
+    if (panel.hidden || stack.active !== entry.id) {
+      run("layout.select", { stack: stack.id, child: entry.id });
+      run("layout.show", { id: panel.id });
+    } else {
+      run("layout.hide", { id: panel.id });
+    }
+    return true;
   }
 
   // Keep the stack's children in step with the contributors. The tree that
@@ -232,26 +295,40 @@ export default class TabHost extends View {
       .map((c) => {
         const mod = c.content?.mod ?? "";
         const m = this.mani[mod];
-        return { id: c.id, mod, title: m?.title ?? pretty(mod), icon: m?.icon ?? null };
+        return { id: c.id, mod, title: m?.title ?? pretty(mod),
+                 icon: m?.icon ?? null, badge: m?.badge ?? null };
       });
     const glyph = (icon, color) => {
       if (!icon) return null;
       const el = icon.endsWith(".svg") ? svg(icon) : image(icon);
       return el.size(14).flex_none().text_color(color);
     };
+    // The number a contributor publishes for its own badge key: read here,
+    // never computed here. Missing, not a number, or zero draws nothing.
+    const count = (key) => {
+      if (!key) return 0;
+      const n = Math.floor(Number(shared(key) ?? 0));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
     const button = (e) => {
       const on = shown && active === e.id;
       const color = on ? t.foreground : t.muted;
+      const n = count(e.badge);
       return h_flex().id(`th-${e.id}`).h(26).px(8).gap(5).flex_none().items_center().rounded(6)
         .text_size(12).when(on, (el) => el.bg(t.selected)).text_color(color)
         .hover((s) => s.bg(t.hover))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => {
-          if (on) run("layout.hide", { id: p.panel });
-          else { run("layout.select", { stack: stack.id, child: e.id }); run("layout.show", { id: p.panel }); }
+          if (!this.openTab(e.mod)) return;
+          cx.notify();
         })
         .when(Boolean(e.icon), (el) => el.child(glyph(e.icon, color)))
-        .child(div().max_w(120).truncate().child(e.title));
+        .child(div().max_w(120).truncate().child(e.title))
+        // flex_none after the truncating label: a narrow tab bar shortens the
+        // title and keeps the count, which is the whole point of the chip.
+        .when(n > 0, (el) => el.child(div().flex_none().px(5).rounded(99)
+          .bg(t.accent).text_color(t.accent_foreground).text_size(9.5)
+          .child(n > 9 ? "9+" : String(n))));
     };
     return h_flex().size_full().justify_end().px(6).gap(3).items_center()
       .children(entries.map(button));

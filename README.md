@@ -64,6 +64,24 @@ lands, and removes them when it goes. A contributor should still be worth
 having without tab-host — as a pane via `pane.split --mod <name>`, the way
 herdr-issues opens.
 
+Two more optional fields, for the two things a contributor's own files can't
+do:
+
+- **`tab.badge: "<shared key>"`** — a count the contributor keeps up to date
+  with `setShared` (setting it re-renders every mod). The button draws it as a
+  chip after its label and after the part that truncates, so a narrow tab bar
+  shortens the title and keeps the number. That is what makes an unread count
+  visible while the side panel is collapsed, which is where it spends its
+  time. tab-host never counts anything itself: a missing, zero or non-numeric
+  value draws nothing.
+- **`tabhost.open:<mod>`** — a command to bind to a key, e.g.
+  `"cmd-alt-shift-i": "tabhost.open:tab-notes"` in `keys.json`. It does what
+  that mod's button does, including putting the panel away when that tab is
+  already the one showing. It has to live here: `keys.json` fills only a
+  command's first argument, so neither `layout.select` (two arguments) nor the
+  `layout.show` after it can be bound, and a contributor's own copy is asleep
+  whenever its tab is hidden — which is exactly when someone wants the key.
+
 **AGENTS.md** in this repo is the full contract for the agents who build
 those mods, and **PROMPT.md** holds the one-line prompt a person pastes to
 send an agent at it. `examples/tab-notes/` here is the reference example; third
@@ -93,7 +111,8 @@ retires without its contributors noticing.
   core takes the idea over; at that point the reconciler has nothing to add
   (blocks already in the stack are kept) and the buttons keep drawing.
 - Diagnostics land in `~/.config/herdr-app/data/tab-host/reconcile.log` —
-  copy starts, the tabs each reconcile saw, every `layout.set` and resize.
+  copy starts, the tabs each reconcile saw, every `layout.set` and resize,
+  and each `tabhost.open:<mod>` a key sent.
 - The buttons block sits at the right end of the tab bar; on Linux and
   Windows the shipped tab bar draws the window buttons there too, so the
   buttons land outside them (same as herdr-issues' button block).

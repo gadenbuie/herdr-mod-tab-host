@@ -25,6 +25,13 @@ A contributor is an ordinary mod in this repo's `mods/<name>/` whose
 - `tab.icon` — optional, a path from Herdr's home (`mods/<name>/icon.svg`).
   `*.svg` draws tinted with the text color; anything else draws full color.
   Give one — a button without an icon is a label alone.
+- `tab.badge` — optional, the name of a `shared()` key you keep up to date
+  (`setShared(key, count)`; setting re-renders every mod). tab-host draws
+  that number as a chip after your label, so it stays visible with the side
+  panel collapsed. Write it only when the number changes — `setShared`
+  re-renders everyone — and let tab-host read it: it renders the number it is
+  given and never computes one. Keep the key yours (`<mod>.unread`), since
+  two mods writing one map would race.
 - The same field under the name `button` works too
   (herdrdev/herdr-app#246 proposes that name for the core; either joins).
 - `main.js` — any Herdr mod: default-exports a class extending `View`, with
@@ -44,6 +51,12 @@ A contributor is an ordinary mod in this repo's `mods/<name>/` whose
 - You get no props. If your mod can also show somewhere else (a pane, an
   overlay), use `props()` to tell the roles apart the way tab-host itself
   does.
+- A key can reach your tab through tab-host: `tabhost.open:<name>` does what
+  your button does, toggle included, for anyone who binds it in `keys.json`
+  (`"cmd-alt-shift-i": "tabhost.open:<name>"`). Nothing to write — it is why
+  you should not try to bind a key of your own: `keys.json` fills only a
+  command's first argument, and your copy is asleep while your tab is
+  hidden, which is when the key would be pressed.
 
 ## Rules that bit other mods here
 

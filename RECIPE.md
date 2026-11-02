@@ -54,6 +54,14 @@ opens. The same field under the name `button` works too (see #246 below),
 and `shared("tabhost.panels")` — a list of mod names — adds tabs without a
 manifest at all.
 
+Two optional fields go to the two things a contributor's own files cannot
+do. `badge` names a `shared()` key the contributor keeps up to date
+(`setShared` re-renders every mod); the button draws that number as a chip
+after its label, and the label is what truncates when the bar runs out of
+room, so the count survives a collapsed panel. `tabhost.open:<mod>` is the
+command a key binds: it does what that mod's button does, because `keys.json`
+fills only a command's first argument and a hidden tab's own copy is asleep.
+
 **The buttons** (`mods/tab-host/main.js`, the copy in the tab bar): draws one
 button per contributor — the stack's `tabhost-*` children — styled after the
 shipped Files and Changes buttons, which keep their own buttons. The active
@@ -63,7 +71,17 @@ click does what those buttons do: shown on it → `layout.hide {panel}`;
 otherwise `layout.select {stack, child}` + `layout.show {panel}`. The block's
 width is fitted to the buttons it draws: an estimate from the titles and
 icons, applied with `layout.resize {id, px}` when it differs — the layout
-file seeds a width, the copy corrects it, and both agree from then on.
+file seeds a width, the copy corrects it, and both agree from then on. A
+contributor whose manifest names a `badge` key gets that chip's width
+reserved whether or not a number is there, so a count arriving doesn't resize
+the bar under the person's cursor.
+
+**The key** (`tabhost.open:<mod>`) is the same copy's `nextCommand()` loop,
+and the same `openTab(name)` a click runs — one function, so a key and a
+button can't drift apart. Only the copy with `buttons: true` acts, so a
+second copy of the block in some layout never answers the same press; an
+unknown name, a missing stack or a missing panel column is a silent no-op,
+and each press writes one line to the log beside the clicks.
 
 **The reconciler** (the same copy — and being in the always-visible tab bar,
 it never sleeps, so contributors register even while the panel is hidden):
@@ -188,6 +206,16 @@ the scan sees the contributor, `layout.set` keeps `tabhost-tab-notes` in
 block's width (90 seed → 72 for one button, → 0 when the last contributor
 leaves), `layout.select` and `layout.show`/`hide` drive the panel, clicks
 survive a `layout.set`, and `status` shows no errors.
+
+Badges and keys were confirmed with a scratch contributor (a copy of the
+example with `"badge": "badgecheck.n"`) rather than with the contributor
+that asked for them, which is the point: a mod that had never been seen
+drew its chip from a real `setShared("badgecheck.n", 12)` (the chip reads
+`9+`, the title truncates, the chip does not), and the same worked on the
+second button beside it. `openTab` was driven from a timer patch in the
+installed copy — synthetic key events need an Accessibility grant this
+machine does not have — with the side panel **hidden**: the panel came back
+on that contributor's tab, and the next call put it away again.
 
 ## Built from
 
