@@ -239,7 +239,9 @@ export default class TabHost extends View {
     // when the shown space changes, so an answer never outlives what it was
     // about.
     this.checks = new Map();
-    this.asking = new Set(); // check keys whose exec is out now
+    this.asking = new Set(); // check keys whose exec is out, or waiting its turn
+    this.queue = [];         // checks waiting for the worker, oldest first
+    this.kick = null;        // the worker's resolver while it has nothing to do
     this.space = "";         // the space every answer here belongs to (spaceKey)
     this.settled = null;     // the state the active-child decision was last made for
     // A key fills one command's first argument, so neither of the two commands
@@ -278,6 +280,9 @@ export default class TabHost extends View {
         if (did) cx.notify();
       }
     });
+    // The tab.show worker: one exec at a time, woken by ask() and alive as long
+    // as this copy is, so a check is started by init rather than by a render.
+    cx.spawn((cx) => this.drain(cx));
     cx.spawn(async (cx) => {
       await this.reconcile(cx);
       try {
@@ -332,16 +337,22 @@ export default class TabHost extends View {
     return Boolean(space) && this.checks.get(checkKey(space, text)) === true;
   }
 
-  // Ask every conditional contributor about this space, once: the answers live
-  // in this.checks under everything they depend on, and the ones that are not
-  // this space's are dropped when the shown space changes. Called from render,
-  // which is where a space change (live spaces(), re-rendered by Herdr) arrives.
+  // Ask every conditional contributor about this space, once each: the answers
+  // live in this.checks under everything they depend on, and the ones that are
+  // not this space's are dropped, along with any check still waiting its turn,
+  // when the shown space changes. Called from render, which is where a space
+  // change (live spaces(), re-rendered by Herdr) arrives.
   checkSpace(space, cx) {
     const here = space ? spaceKey(space) : "";
     if (here !== this.space) {
       this.space = here;
       for (const key of [...this.checks.keys()])
         if (!key.startsWith(here + "\u0000")) this.checks.delete(key);
+      this.queue = this.queue.filter((job) => {
+        if (job.key.startsWith(here + "\u0000")) return true;
+        this.asking.delete(job.key);
+        return false;
+      });
       this.settled = null;
     }
     if (!space) return;
@@ -349,41 +360,64 @@ export default class TabHost extends View {
       this.ask(m, space, cx);
   }
 
-  // One contributor's tab.show, run in that space's folder on that space's
-  // machine. The exit code is the whole answer: 0 draws, anything else does
-  // not, and an exec that couldn't start at all (no sh, the folder gone, the
-  // machine away) is a no as well — a check that can't run is not permission.
+  // Queue one contributor's tab.show. The exec itself runs in the one worker
+  // drain() owns, never here: render runs constantly, and a task started by it
+  // is not the place for work whose answer has to arrive.
   ask(m, space, cx) {
     const text = showText(m);
     if (!text) return;
     const key = checkKey(space, text);
     if (this.checks.has(key) || this.asking.has(key)) return;
     this.asking.add(key);
-    cx.spawn(async (cx) => {
-      let ok = false;
-      let why;
-      try {
-        const r = await exec("sh", ["-c", text], { cwd: space.folder || undefined, on: space.machine });
-        ok = r.code === 0;
-        why = "code " + r.code;
-      } catch (e) {
-        why = "exec failed: " + (e?.message ?? e);
+    this.queue.push({ name: m.name, space, key, text });
+    this.kick?.();
+  }
+
+  // One tab.show at a time, for the life of this copy. Asking a machine several
+  // things at once is what loses answers — three checks fanned out to one remote
+  // machine came back as one, the other two never answering at all — and a check
+  // with no answer is a button that never comes back, which is worse than a
+  // button that arrives late. The checks are one `command -v` each, so the queue
+  // costs nothing that can be felt.
+  async drain(cx) {
+    for (;;) {
+      if (!this.queue.length) {
+        await new Promise((resolve) => { this.kick = resolve; });
+        continue;
       }
-      this.asking.delete(key);
-      // The space moved on while this ran: its answer is about a space nobody is
-      // in any more, and the next one to be entered asks again.
-      if (!key.startsWith(this.space + "\u0000")) return;
-      this.checks.set(key, ok);
-      const what = "show " + m.name + " → " + (ok ? "yes" : "no") + " (" + why + ")";
-      // The bar loses or gains a button: the block is now the wrong width, and
-      // the panel may be showing a tab that just went away. Both after the
-      // answer is in, so the log line carries what the answer changed.
-      this.wrote = null;
-      await this.fit();
-      this.tell(what);
-      this.settle();
-      cx.notify();
-    });
+      await this.check(this.queue.shift(), cx);
+    }
+  }
+
+  // What the queued ask does: run the string where the space lives, and apply
+  // the exit code. 0 draws, anything else does not, and an exec that couldn't
+  // start at all (no sh, the folder gone, the machine away) is a no as well — a
+  // check that can't run is not permission.
+  async check(job, cx) {
+    const { name, space, key, text } = job;
+    let ok = false;
+    let why;
+    try {
+      const r = await exec("sh", ["-c", text], { cwd: space.folder || undefined, on: space.machine });
+      ok = r.code === 0;
+      why = "code " + r.code;
+    } catch (e) {
+      why = "exec failed: " + (e?.message ?? e);
+    }
+    this.asking.delete(key);
+    // The space moved on while this ran: its answer is about a space nobody is
+    // in any more, and the next one to be entered asks again.
+    if (!key.startsWith(this.space + "\u0000")) return;
+    this.checks.set(key, ok);
+    const what = "show " + name + " → " + (ok ? "yes" : "no") + " (" + why + ")";
+    // The bar loses or gains a button: the block is now the wrong width, and the
+    // panel may be showing a tab that just went away. Both after the answer is
+    // in, so the log line carries what the answer changed.
+    this.wrote = null;
+    await this.fit();
+    this.tell(what);
+    this.settle();
+    cx.notify();
   }
 
   // Whether a check for this space is still out. The active-child fix waits for

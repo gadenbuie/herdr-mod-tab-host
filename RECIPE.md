@@ -99,7 +99,10 @@ filters the same way `render()` does, so a hidden button takes no room, and
 showing. If the child the panel is showing goes hidden, the copy selects the
 first that is still drawn, or hides the panel when none is — once per change.
 Every answer is one line in the log (`show roborev → no (code 1)`), which is
-the only way to see why a button is missing.
+the only way to see why a button is missing. The checks are asked one at a
+time by a worker the copy starts in `init`: three fanned out at once to one
+remote machine came back as one, and two buttons that never answer are two
+buttons that never come back.
 
 **The key** (`tab-host.toggle:<mod>`) is the same copy's `nextCommand()` loop,
 and the same `toggleTab(name)` a click runs — one function, so a key and a
