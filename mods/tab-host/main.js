@@ -148,16 +148,29 @@ export default class TabHost extends View {
     // away. Unknown names, a missing stack, a missing panel column: silent
     // no-ops, the way a mod without a tab is simply not a contributor.
     cx.spawn(async (cx) => {
+      this.tell("key loop ready");
       for (;;) {
         let command;
-        try { command = String((await nextCommand()) ?? ""); } catch { break; }
-        // Only the buttons copy acts; a layout carrying another copy of this
-        // mod without `buttons` must not answer the same press as well.
-        if (props()?.buttons !== true || !command.startsWith("open:")) continue;
-        const name = command.slice("open:".length);
-        if (!this.openTab(name)) continue;
-        this.tell("open " + name);
-        cx.notify();
+        try { command = String((await nextCommand()) ?? ""); }
+        catch (e) {
+          // The copy going away: said once, rather than a silent stop that would
+          // read from the outside exactly like a key that does nothing.
+          this.tell("key loop closed: " + (e?.message ?? e));
+          break;
+        }
+        // Every command is logged. A key that does nothing is the one thing the
+        // person can't inspect from outside, so one press is one line beside the
+        // clicks. Only the buttons copy acts: a layout carrying another copy of
+        // this mod without `buttons` must not answer the same press as well.
+        const name = command.startsWith("open:") ? command.slice("open:".length) : null;
+        if (name === null) { this.tell("command \"" + command + "\" ignored"); continue; }
+        if (props()?.buttons !== true) {
+          this.tell("command \"" + command + "\" left to the buttons copy");
+          continue;
+        }
+        const opened = this.openTab(name);
+        this.tell("command \"" + command + "\" → " + (opened ? "opened" : "no tab named " + name));
+        if (opened) cx.notify();
       }
     });
     cx.spawn(async (cx) => {
