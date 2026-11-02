@@ -89,9 +89,10 @@ the bar under the person's cursor.
 is not per space either: `tab.show` answers for the space being shown, and
 that is the one fact about a button the person's context changes. The answers
 are memoized under everything they depend on — the space's id, its machine,
-its folder and the text itself — so a space revisited asks once, and a
-worktree space that moves asks again. No answer yet is not a yes: a button
-stays away until its check returns, which is why switching to a remote space
+its folder and the text itself — and the ones that belong to a space the
+person has left are dropped, so coming back asks again rather than trusting a
+folder or a machine that may have moved since. No answer yet is not a yes: a
+button stays away until its check returns, which is why switching to a space
 briefly narrows the block and then widens it as the answers land. `fit()`
 filters the same way `render()` does, so a hidden button takes no room, and
 `toggleTab()` refuses one, so the key can't open a tab the bar isn't
