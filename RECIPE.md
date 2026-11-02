@@ -214,7 +214,7 @@ example with `"badge": "badgecheck.n"`) rather than with the contributor
 that asked for them, which is the point: a mod that had never been seen
 drew its chip from a real `setShared("badgecheck.n", 12)` (the chip reads
 `9+`, the title truncates, the chip does not), and the same worked on the
-second button beside it. `openTab` was driven from a timer patch in the
+second button beside it. `toggleTab` was driven from a timer patch in the
 installed copy — synthetic key events need an Accessibility grant this
 machine does not have — with the side panel **hidden**: the panel came back
 on that contributor's tab, and the next call put it away again.
