@@ -85,7 +85,8 @@ do:
   only a command's first argument, so neither `layout.select` (two arguments)
   nor the `layout.show` after it can be bound, and a contributor's own copy is
   asleep whenever its tab is hidden — which is exactly when someone wants the
-  key.
+  key. A tab `tab.show` keeps out of the space being shown refuses the press
+  too: the button isn't there, so the key has nothing to open.
 
 **AGENTS.md** in this repo is the full contract for the agents who build
 those mods, and **PROMPT.md** holds the one-line prompt a person pastes to
@@ -98,6 +99,18 @@ ties fall back to the title, so the bar reads alphabetically until someone
 asks otherwise, and adding the field to one manifest moves that button and
 leaves the rest where they were. Files and Changes are drawn by the shipped
 `tabs` mod, so this orders the contributors among themselves only.
+
+And one for a contributor whose program is not everywhere: **`tab.show`** is
+a shell string, run as `sh -c` in the shown space's folder on that space's
+machine. Exit 0 draws the button; a nonzero exit, or an exec that can't start
+(the program isn't there, the machine is away), keeps it away. Absent draws
+always. So roborev's manifest can say `"show": "command -v roborev
+>/dev/null 2>&1"` and the button appears in the spaces whose machine has it —
+one bar, several spaces, and a button that means something in each. The
+buttons are hidden until the check answers for the space being shown, which
+is a round trip on a remote one; tab-host logs every answer as `show roborev
+→ no (code 1)` in `reconcile.log`, so a button that doesn't appear can be
+looked up rather than guessed at.
 
 `herdr`'s `shared("tabhost.panels")` is a second door: a list of extra mod
 names (set with `setShared`, or edited into `shared.json`) for a mod that

@@ -44,6 +44,17 @@
 // own buttons (the shipped tabs mod draws those), so this orders the
 // contributors among themselves and nothing else.
 //
+// `tab.show` is a shell string, run as `sh -c` in the shown space's folder and
+// on that space's machine — the place a terminal there would start, so it can
+// ask the machine the space actually lives on. Exit 0 draws the button; a
+// nonzero exit, or an exec that could not start at all (the program isn't
+// there, the machine is away), keeps it away. Absent draws always, which is
+// what every contributor got before this existed: a mod whose program is
+// everywhere omits it, and one whose program is on the laptop and not on the
+// build box asks with `command -v`. One answer is one space — the bar is not
+// per space, so the check runs again when the shown space changes, and the
+// button stays away until the answer for that space arrives.
+//
 // `tab-host.toggle:<mod>` opens that mod's tab or closes it again, for a key
 // bound to it in keys.json (`"cmd-alt-shift-i": "tab-host.toggle:tab-notes"`).
 // It has to
@@ -59,7 +70,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { layout, run, theme, props, appHome, shared, watchFolder,
-         readTextFile, writeTextFile, nextCommand } from "herdr";
+         readTextFile, writeTextFile, nextCommand, exec, spaces } from "herdr";
 import * as fs from "fs/promises";
 
 function find(node, id) {
@@ -105,6 +116,7 @@ async function manifests() {
         out.push({ name, title: tab.title,
                    icon: typeof tab.icon === "string" ? tab.icon : null,
                    badge: typeof tab.badge === "string" ? tab.badge : null,
+                   show: typeof tab.show === "string" ? tab.show : null,
                    order: orderOf(tab.order) });
     } catch { /* not a contributor */ }
   }
@@ -152,6 +164,20 @@ function ordered(mani, extra) {
     }
   return list.filter((e) => e.name !== "tab-host").sort(byOrder);
 }
+
+// The shell string a contributor's button is conditional on, or null for a
+// button that is always there. Blank is the same as absent: a manifest that
+// says "show": "" means nothing by it.
+const showText = (m) => (typeof m?.show === "string" && m.show.trim() ? m.show : null);
+
+// Everything an answer to that check depends on: which space it asks about
+// (id), where that space is (machine, folder) and what was asked (the text).
+// Any of the four changing makes the old answer stale — including the folder
+// moving under the same space id, which is how a worktree space becomes a
+// different checkout.
+const spaceKey = (s) => [s.id, s.machine ?? "", s.folder ?? ""].join("\u0000");
+const checkKey = (space, text) => spaceKey(space) + "\u0000" + text;
+const activeSpace = () => spaces().find((s) => s.active) ?? null;
 
 // The number a contributor publishes for its own badge key: read here, never
 // computed here. Missing, not a number, or zero means no chip — every caller
@@ -202,11 +228,20 @@ async function rewrite(path, text) {
 export default class TabHost extends View {
   init(_props, cx) {
     this.tell("start " + JSON.stringify(props() ?? null));
-    this.mani = {};    // mod name -> { title, icon, badge }, from the last scan
+    this.mani = {};    // mod name -> { title, icon, badge, show, order }, from the last scan
     this.written = null; // the child-id list the layout last got, so one state change is one layout.set
     this.px = null;      // the width the buttons last asked for
     this.chips = null;   // chips drawn last render; null until one has been seen
     this.busy = false;
+    // What each contributor's tab.show answered where the person is now standing:
+    // checkKey() -> true (draw) or false (don't). A key that isn't here has no
+    // answer yet, which draws nothing — see visibleHere(). Drop in this.space
+    // when the shown space changes, so an answer never outlives what it was
+    // about.
+    this.checks = new Map();
+    this.asking = new Set(); // check keys whose exec is out now
+    this.space = "";         // the space every answer here belongs to (spaceKey)
+    this.settled = null;     // the state the active-child decision was last made for
     // A key fills one command's first argument, so neither of the two commands
     // a click runs can be bound; this copy is the always-visible half of the
     // pair, so it takes the one a key can express and does what the button
@@ -239,7 +274,7 @@ export default class TabHost extends View {
           continue;
         }
         const did = this.toggleTab(name);
-        this.tell("command \"" + command + "\" → " + (did || "no tab named " + name));
+        this.tell("command \"" + command + "\" → " + (did || "no " + name + " button here"));
         if (did) cx.notify();
       }
     });
@@ -262,14 +297,18 @@ export default class TabHost extends View {
   // show the panel on that tab, or put the panel away when that tab is already
   // the one showing. A click and a key both land here, so they can't drift
   // apart. Says which it did — "shown", "hidden" — or false for a name that is
-  // not in the stack or a props set with no panel: silent, the way a mod
-  // without a tab is simply not a contributor.
+  // not in the stack, a props set with no panel, or a button that tab.show keeps
+  // out of this space: silent, the way a mod without a tab is simply not a
+  // contributor. A hidden tab is the case worth naming: its button is not on
+  // screen, so a click can't reach it, and a key bound to it opens a tab the bar
+  // is not offering.
   toggleTab(name) {
     const root = layout();
     const stack = myStack(root);
     const panel = props()?.panel ? find(root, props().panel) : null;
     const entry = (stack?.children ?? []).find((c) => c.content?.mod === name);
     if (!entry || !panel) return false;
+    if (!this.visibleHere(this.mani[name], activeSpace())) return false;
     if (panel.hidden || stack.active !== entry.id) {
       run("layout.select", { stack: stack.id, child: entry.id });
       run("layout.show", { id: panel.id });
@@ -277,6 +316,112 @@ export default class TabHost extends View {
     }
     run("layout.hide", { id: panel.id });
     return "hidden";
+  }
+
+  // Is this contributor's button drawn where the person is standing now? No
+  // tab.show draws it, whatever the space; one that has an answer draws it when
+  // that answer was yes. No answer yet is not a yes: the check answers in
+  // milliseconds here and a round trip away, and a button that arrives a beat
+  // after its space does is better than one that appears and then goes, taking
+  // a click with it. Everything that decides what is on screen asks this —
+  // render, fit, toggleTab, the active-child fix below — so the bar, the room
+  // it takes and the tabs a key may open cannot disagree.
+  visibleHere(m, space) {
+    const text = showText(m);
+    if (!text) return true;
+    return Boolean(space) && this.checks.get(checkKey(space, text)) === true;
+  }
+
+  // Ask every conditional contributor about this space, once: the answers live
+  // in this.checks under everything they depend on, and the ones that are not
+  // this space's are dropped when the shown space changes. Called from render,
+  // which is where a space change (live spaces(), re-rendered by Herdr) arrives.
+  checkSpace(space, cx) {
+    const here = space ? spaceKey(space) : "";
+    if (here !== this.space) {
+      this.space = here;
+      for (const key of [...this.checks.keys()])
+        if (!key.startsWith(here + "\u0000")) this.checks.delete(key);
+      this.settled = null;
+    }
+    if (!space) return;
+    for (const m of Object.values(this.mani))
+      this.ask(m, space, cx);
+  }
+
+  // One contributor's tab.show, run in that space's folder on that space's
+  // machine. The exit code is the whole answer: 0 draws, anything else does
+  // not, and an exec that couldn't start at all (no sh, the folder gone, the
+  // machine away) is a no as well — a check that can't run is not permission.
+  ask(m, space, cx) {
+    const text = showText(m);
+    if (!text) return;
+    const key = checkKey(space, text);
+    if (this.checks.has(key) || this.asking.has(key)) return;
+    this.asking.add(key);
+    cx.spawn(async (cx) => {
+      let ok = false;
+      let why;
+      try {
+        const r = await exec("sh", ["-c", text], { cwd: space.folder || undefined, on: space.machine });
+        ok = r.code === 0;
+        why = "code " + r.code;
+      } catch (e) {
+        why = "exec failed: " + (e?.message ?? e);
+      }
+      this.asking.delete(key);
+      // The space moved on while this ran: its answer is about a space nobody is
+      // in any more, and the next one to be entered asks again.
+      if (!key.startsWith(this.space + "\u0000")) return;
+      this.checks.set(key, ok);
+      const what = "show " + m.name + " → " + (ok ? "yes" : "no") + " (" + why + ")";
+      // The bar loses or gains a button: the block is now the wrong width, and
+      // the panel may be showing a tab that just went away. Both after the
+      // answer is in, so the log line carries what the answer changed.
+      this.wrote = null;
+      await this.fit();
+      this.tell(what);
+      this.settle();
+      cx.notify();
+    });
+  }
+
+  // Whether a check for this space is still out. The active-child fix waits for
+  // it: an answer that arrives a moment later can change which buttons are
+  // drawn, and moving the panel twice in that moment is a flash for nothing.
+  pending(space) {
+    if (!space) return false;
+    const head = spaceKey(space) + "\u0000";
+    for (const key of this.asking) if (key.startsWith(head)) return true;
+    return false;
+  }
+
+  // The panel shows one child, and one whose button tab.show keeps out of this
+  // space has no business being it — the person would see a tab the bar is not
+  // offering. Move to the first child that is still drawn, or put the panel away
+  // when none is. Once per change: the state this was last decided for is
+  // remembered, so a re-render with the same answers runs nothing.
+  settle() {
+    const root = layout();
+    const stack = myStack(root);
+    const panel = props()?.panel ? find(root, props().panel) : null;
+    if (!stack || !panel) return;
+    const space = activeSpace();
+    if (this.pending(space)) return;
+    const kids = (stack.children ?? []).filter((c) => String(c.id ?? "").startsWith("tabhost-"));
+    const drawn = kids.filter((c) => this.visibleHere(this.mani[c.content?.mod], space));
+    const mark = [stack.active, panel.hidden ? "hidden" : "shown", drawn.map((c) => c.id).join(",")].join("|");
+    if (mark === this.settled) return;
+    this.settled = mark;
+    const active = kids.find((c) => c.id === stack.active);
+    if (!active || drawn.some((c) => c.id === active.id)) return;
+    if (drawn.length) {
+      run("layout.select", { stack: stack.id, child: drawn[0].id });
+      this.tell("active " + active.id + " is not drawn here → select " + drawn[0].id);
+    } else {
+      run("layout.hide", { id: panel.id });
+      this.tell("active " + active.id + " is not drawn here → hide " + panel.id);
+    }
   }
 
   // Keep the stack's children in step with the contributors. The tree that
@@ -328,6 +473,7 @@ export default class TabHost extends View {
         this.wrote = null;
       }
       this.fit();
+      this.settle();
     } catch (e) {
       this.warn = String(e?.message ?? e);
       console.log("tab-host: reconcile —", this.warn);
@@ -338,20 +484,24 @@ export default class TabHost extends View {
     this.tell("reconciled");
   }
 
-  // Keep the buttons block as wide as its buttons. The width asked for is
-  // remembered (this.px), not read back: layout() can be stale on a copy's
+  // Keep the buttons block as wide as its buttons — the ones this space draws,
+  // which is the same filter render() applies, so a button that is not there
+  // takes no room and one that arrives gets its room back. The width asked for
+  // is remembered (this.px), not read back: layout() can be stale on a copy's
   // first pass, and layout.resize is cheap and idempotent, so asking once
   // per width change beats measuring. It reads the last scan and the live
   // shared list rather than taking them, so render() can ask for a refit when
-  // a badge appears or goes away — the one thing that changes a button's width
-  // without the mods folder changing.
+  // a badge appears or goes away — the one thing besides tab.show that changes
+  // a button's width without the mods folder changing.
   async fit() {
     const block = myBlock(layout());
     if (!block) {
       this.warn = "fit: the buttons block is not in the live layout";
       return;
     }
-    const entries = ordered(this.mani, shared("tabhost.panels"));
+    const space = activeSpace();
+    const entries = ordered(this.mani, shared("tabhost.panels"))
+      .filter((e) => this.visibleHere(e, space));
     const want = widthOf(entries);
     if (want !== this.px) {
       this.px = want;
@@ -383,6 +533,11 @@ export default class TabHost extends View {
     const panel = p.panel ? find(root, p.panel) : null;
     const shown = Boolean(panel && !panel.hidden);
     const active = stack.active ?? null;
+    // tab.show is asked here, because this is where a change of space arrives:
+    // spaces() is live data, so Herdr re-renders every copy when the shown space
+    // changes, and this copy is one of them.
+    const space = activeSpace();
+    this.checkSpace(space, cx);
     const entries = (stack.children ?? [])
       .filter((c) => String(c.id ?? "").startsWith("tabhost-"))
       .map((c) => {
@@ -391,6 +546,9 @@ export default class TabHost extends View {
         return { id: c.id, name: mod, title: m?.title ?? pretty(mod),
                  order: orderOf(m?.order), icon: m?.icon ?? null, badge: m?.badge ?? null };
       })
+      // A contributor this space doesn't draw is not a button: no pill, no chip,
+      // no room taken.
+      .filter((e) => this.visibleHere(this.mani[e.name], space))
       // The reconciler writes the children in bar order; sorting again here is
       // what the gap between a manifest changing and the next layout.set gets,
       // and it makes the buttons independent of how the stack happens to be

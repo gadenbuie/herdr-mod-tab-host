@@ -39,6 +39,17 @@ A contributor is an ordinary mod in this repo's `mods/<name>/` whose
   contributors among themselves only. Use it when your tab belongs beside a
   particular neighbour (a review tab next to the diff, say); leave it out
   otherwise and don't tune it byte by byte against a mod you don't own.
+- `tab.show` — optional, a shell string, run as `sh -c` in the shown space's
+  folder and on that space's own machine. Exit 0 draws your button; a nonzero
+  exit or an exec that can't start (your program isn't there, the machine is
+  away) keeps it away. Absent draws always, the way every contributor worked
+  before this field. Use it when your mod is only useful where its program is
+  — `"show": "command -v roborev >/dev/null 2>&1"` draws the button on the
+  laptop and not on the build box. It is one cheap command, not a script: the
+  bar is shared by every space, so the check runs again each time the shown
+  space changes, and the button stays away until the answer arrives. A hidden
+  button is hidden everywhere it would act: not drawn, no width reserved, its
+  `tab-host.toggle:` key answered with a nothing-to-do.
 - The same field under the name `button` works too
   (herdrdev/herdr-app#246 proposes that name for the core; either joins).
 - `main.js` — any Herdr mod: default-exports a class extending `View`, with

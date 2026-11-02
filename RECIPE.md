@@ -65,7 +65,11 @@ fills only a command's first argument and a hidden tab's own copy is asleep.
 further left; missing sorts as 100, ties fall back to the title, so a manifest
 that says nothing sits in the alphabet the bar has always used and one that
 asks moves only itself. Files and Changes are the shipped `tabs` mod's
-drawing, so `order` sorts contributors among themselves.
+drawing, so `order` sorts contributors among themselves. `show` is a shell
+string run as `sh -c` in the shown space's folder on that space's machine:
+exit 0 draws the button, anything else and an exec that can't start keeps it
+away, absent draws always — the field for a mod whose program is on some
+machines and not others.
 
 **The buttons** (`mods/tab-host/main.js`, the copy in the tab bar): draws one
 button per contributor — the stack's `tabhost-*` children — styled after the
@@ -81,14 +85,30 @@ contributor whose manifest names a `badge` key gets that chip's width
 reserved whether or not a number is there, so a count arriving doesn't resize
 the bar under the person's cursor.
 
+**Which buttons, in which space.** One layout serves every space, so the bar
+is not per space either: `tab.show` answers for the space being shown, and
+that is the one fact about a button the person's context changes. The answers
+are memoized under everything they depend on — the space's id, its machine,
+its folder and the text itself — so a space revisited asks once, and a
+worktree space that moves asks again. No answer yet is not a yes: a button
+stays away until its check returns, which is why switching to a remote space
+briefly narrows the block and then widens it as the answers land. `fit()`
+filters the same way `render()` does, so a hidden button takes no room, and
+`toggleTab()` refuses one, so the key can't open a tab the bar isn't
+showing. If the child the panel is showing goes hidden, the copy selects the
+first that is still drawn, or hides the panel when none is — once per change.
+Every answer is one line in the log (`show roborev → no (code 1)`), which is
+the only way to see why a button is missing.
+
 **The key** (`tab-host.toggle:<mod>`) is the same copy's `nextCommand()` loop,
 and the same `toggleTab(name)` a click runs — one function, so a key and a
 button can't drift apart. It reports what it did (`shown`, `hidden`), so the
 log line for a press says which way the toggle went. Only the copy with
 `buttons: true` acts, so a second copy of the block in some layout never
-answers the same press; an unknown name, a missing stack or a missing panel
-column is a silent no-op, and each press writes one line to the log beside the
-clicks.
+answers the same press; an unknown name, a missing stack, a missing panel
+column, or a button `tab.show` keeps out of this space is a no-op (logged as
+such, since a key that does nothing is otherwise silent), and each press
+writes one line to the log beside the clicks.
 
 **The reconciler** (the same copy — and being in the always-visible tab bar,
 it never sleeps, so contributors register even while the panel is hidden):
