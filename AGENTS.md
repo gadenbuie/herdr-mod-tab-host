@@ -107,7 +107,7 @@ holds what tab-host last saw and did.
 
 - Don't edit `mods/tab-host/` or this repo to add your tab — the manifest is
   the interface, and a changed tab-host is a fork the person has to maintain.
-  (The one exception: `mods/tab-notes/` here is the *reference example*;
+  (The one exception: `examples/tab-notes/` here is the *reference example*;
   copy its shape, not its folder.)
 - Don't ship a layout variant of your own; the wiring is tab-host's
   `wire.py`'s job and runs against whatever layouts the person already has.

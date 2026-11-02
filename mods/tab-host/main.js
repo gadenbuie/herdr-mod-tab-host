@@ -180,8 +180,10 @@ export default class TabHost extends View {
     this.tell("reconciled");
   }
 
-  // Keep the buttons block as wide as its buttons: read the width the layout
-  // gives it now (clicks included), ask for the difference once.
+  // Keep the buttons block as wide as its buttons. The width asked for is
+  // remembered (this.px), not read back: layout() can be stale on a copy's
+  // first pass, and layout.resize is cheap and idempotent, so asking once
+  // per width change beats measuring.
   async fit(list, extra) {
     const block = myBlock(layout());
     if (!block) {
@@ -195,8 +197,7 @@ export default class TabHost extends View {
         .map((n) => ({ name: n, title: pretty(n), icon: null })),
     ].filter((e) => e.name !== "tab-host");
     const want = widthOf(entries);
-    const px = Math.round(block.size?.px ?? 0);
-    if (Math.abs(want - px) > 1 && want !== this.px) {
+    if (want !== this.px) {
       this.px = want;
       await run("layout.resize", { id: block.id, px: want });
       this.wrote = (this.wrote ? this.wrote + "; " : "") + "resize " + block.id + " → " + want;
@@ -204,10 +205,13 @@ export default class TabHost extends View {
   }
 
   // What this copy did, for data/tab-host/reconcile.log. A small ring in
-  // memory, rewritten whole — no appends, so the file stays readable.
+  // memory, rewritten whole — no appends, so the file stays readable. Every
+  // line names the stack it serves, so copies for two layouts can share the
+  // one file without their lines being mistaken for each other's.
   tell(what) {
+    const slot = props()?.stack ? " " + props().stack : "";
     const stamp = this.seen ? " tabs=[" + this.seen.join(",") + "]" : "";
-    const line = new Date().toISOString().slice(11, 23) + " " + what + stamp
+    const line = new Date().toISOString().slice(11, 23) + slot + " " + what + stamp
       + (this.wrote ? " " + this.wrote : "") + (this.warn ? " WARN: " + this.warn : "");
     this.log = [...(this.log ?? []), line].slice(-20);
     rewrite(appHome() + "/data/tab-host/reconcile.log", this.log.join("\n") + "\n")

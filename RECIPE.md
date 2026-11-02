@@ -44,7 +44,7 @@ ones, and backs up each file it touches.
 `mod.json`:
 
 ```json
-{ "place": "none", "tab": { "title": "Notes", "icon": "mods/tab-notes/note.svg" } }
+{ "place": "none", "tab": { "title": "Notes", "icon": "examples/tab-notes/note.svg" } }
 ```
 
 `place: "none"` keeps Herdr from docking a copy anywhere on its own. `icon`
@@ -177,15 +177,17 @@ meet:
 
 ```sh
 herdr-app check ~/.config/herdr-app/mods/tab-host
-herdr-app check ~/.config/herdr-app/mods/tab-notes
 ```
 
-Both pass. Live, this was confirmed end to end: the buttons copy starts with
-its props (`{"stack":"panel-body","panel":"panel","buttons":true}`), the scan
-sees `[tab-notes]`, `layout.set` keeps `tabhost-tab-notes` in
+It passes. `install.sh` deploys tab-host alone — the example in `examples/`
+is not installed; copy it into `~/.config/herdr-app/mods/` to watch the
+whole flow live. Live, this was confirmed end to end: the buttons copy
+starts with its props (`{"stack":"panel-body","panel":"panel","buttons":true}`),
+the scan sees the contributor, `layout.set` keeps `tabhost-tab-notes` in
 `layouts/work.json` (and it persists across restarts), `fit` settles the
-block's width (90 seed → 72 for one button), `layout.select` and
-`layout.show`/`hide` drive the panel, and `status` shows no errors.
+block's width (90 seed → 72 for one button, → 0 when the last contributor
+leaves), `layout.select` and `layout.show`/`hide` drive the panel, clicks
+survive a `layout.set`, and `status` shows no errors.
 
 ## Built from
 
@@ -200,10 +202,10 @@ block's width (90 seed → 72 for one button), `layout.select` and
   every change is backed up. `install.sh` runs it after copying the mods.
 - `AGENTS.md` — the contributor contract for agents; `PROMPT.md` — the
   one-liner a person pastes to send an agent at it.
-- `mods/tab-notes/main.js` — `EditorState`/`Editor` from `gpui-base` (not
+- `examples/tab-notes/main.js` — `EditorState`/`Editor` from `gpui-base` (not
   `gpui-kit`), one file under `data/tab-notes/`, a `sleep(800)` debounce with
   a `wrote` guard so a burst of typing is one write.
-- `mods/tab-notes/mod.json` — the contract, verbatim.
+- `examples/tab-notes/mod.json` — the contract, verbatim.
 - `layouts/work.json` and `layouts/focus.json` (this Herdr) — wired by
   `wire.py`; `*.bak-wire-*` copies sit beside them.
 

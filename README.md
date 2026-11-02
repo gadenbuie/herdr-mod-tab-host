@@ -27,7 +27,7 @@ opens the panel on that tab exactly as the Files and Changes buttons do.
 Uninstalling the mod takes both away again.
 
 - `mods/tab-host/` — the buttons and the reconciler.
-- `mods/tab-notes/` — the example contributor: a scratchpad that saves as you
+- `examples/tab-notes/` — the example contributor: a scratchpad that saves as you
   type, and proof that a `tab` in `mod.json` is the entire contract.
 
 ## Install
@@ -66,7 +66,7 @@ herdr-issues opens.
 
 **AGENTS.md** in this repo is the full contract for the agents who build
 those mods, and **PROMPT.md** holds the one-line prompt a person pastes to
-send an agent at it. `mods/tab-notes/` here is the reference example; third
+send an agent at it. `examples/tab-notes/` here is the reference example; third
 parties copy its shape, not its folder.
 
 `herdr`'s `shared("tabhost.panels")` is a second door: a list of extra mod
