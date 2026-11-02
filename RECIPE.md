@@ -58,7 +58,7 @@ Two optional fields go to the two things a contributor's own files cannot
 do. `badge` names a `shared()` key the contributor keeps up to date
 (`setShared` re-renders every mod); the button draws that number as a chip
 after its label, and the label is what truncates when the bar runs out of
-room, so the count survives a collapsed panel. `tab-host.open:<mod>` is the
+room, so the count survives a collapsed panel. `tab-host.toggle:<mod>` is the
 command a key binds: it does what that mod's button does, because `keys.json`
 fills only a command's first argument and a hidden tab's own copy is asleep.
 
@@ -76,12 +76,14 @@ contributor whose manifest names a `badge` key gets that chip's width
 reserved whether or not a number is there, so a count arriving doesn't resize
 the bar under the person's cursor.
 
-**The key** (`tab-host.open:<mod>`) is the same copy's `nextCommand()` loop,
-and the same `openTab(name)` a click runs — one function, so a key and a
-button can't drift apart. Only the copy with `buttons: true` acts, so a
-second copy of the block in some layout never answers the same press; an
-unknown name, a missing stack or a missing panel column is a silent no-op,
-and each press writes one line to the log beside the clicks.
+**The key** (`tab-host.toggle:<mod>`) is the same copy's `nextCommand()` loop,
+and the same `toggleTab(name)` a click runs — one function, so a key and a
+button can't drift apart. It reports what it did (`shown`, `hidden`), so the
+log line for a press says which way the toggle went. Only the copy with
+`buttons: true` acts, so a second copy of the block in some layout never
+answers the same press; an unknown name, a missing stack or a missing panel
+column is a silent no-op, and each press writes one line to the log beside the
+clicks.
 
 **The reconciler** (the same copy — and being in the always-visible tab bar,
 it never sleeps, so contributors register even while the panel is hidden):

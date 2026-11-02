@@ -74,16 +74,18 @@ do:
   visible while the side panel is collapsed, which is where it spends its
   time. tab-host never counts anything itself: a missing, zero or non-numeric
   value draws nothing.
-- **`tab-host.open:<mod>`** — a command to bind to a key, e.g.
-  `"cmd-alt-shift-i": "tab-host.open:tab-notes"` in `keys.json`. It does what
-  that mod's button does, including putting the panel away when that tab is
-  already the one showing. `tab-host` there is this mod's own folder name, the
-  same way `plannotator.palette` names that mod; Herdr hands the part after the
-  dot — `open:<mod>` — to this copy's `nextCommand()`. It has to live here:
-  `keys.json` fills only a command's first argument, so neither `layout.select`
-  (two arguments) nor the `layout.show` after it can be bound, and a
-  contributor's own copy is asleep whenever its tab is hidden — which is
-  exactly when someone wants the key.
+- **`tab-host.toggle:<mod>`** — a command to bind to a key, e.g.
+  `"cmd-alt-shift-i": "tab-host.toggle:tab-notes"` in `keys.json`. It toggles
+  that mod's tab: the panel opens on it, and the same press again puts the panel
+  away — the button's own behaviour, so a key and a click can't drift apart.
+  `tab-host` there is this mod's own folder name, the same way
+  `plannotator.palette` names that mod; Herdr hands the part after the dot —
+  `toggle:<mod>` — to this copy's `nextCommand()` (`open:<mod>`, the name this
+  had in its first cut, still answers). It has to live here: `keys.json` fills
+  only a command's first argument, so neither `layout.select` (two arguments)
+  nor the `layout.show` after it can be bound, and a contributor's own copy is
+  asleep whenever its tab is hidden — which is exactly when someone wants the
+  key.
 
 **AGENTS.md** in this repo is the full contract for the agents who build
 those mods, and **PROMPT.md** holds the one-line prompt a person pastes to
@@ -115,7 +117,7 @@ retires without its contributors noticing.
   (blocks already in the stack are kept) and the buttons keep drawing.
 - Diagnostics land in `~/.config/herdr-app/data/tab-host/reconcile.log` —
   copy starts, the tabs each reconcile saw, every `layout.set` and resize,
-  and each `tab-host.open:<mod>` a key sent.
+  and each `tab-host.toggle:<mod>` a key sent.
 - The buttons block sits at the right end of the tab bar; on Linux and
   Windows the shipped tab bar draws the window buttons there too, so the
   buttons land outside them (same as herdr-issues' button block).

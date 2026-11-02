@@ -51,12 +51,13 @@ A contributor is an ordinary mod in this repo's `mods/<name>/` whose
 - You get no props. If your mod can also show somewhere else (a pane, an
   overlay), use `props()` to tell the roles apart the way tab-host itself
   does.
-- A key can reach your tab through tab-host: `tab-host.open:<name>` does what
-  your button does, toggle included, for anyone who binds it in `keys.json`
-  (`"cmd-alt-shift-i": "tab-host.open:<name>"`). Nothing to write — it is why
-  you should not try to bind a key of your own: `keys.json` fills only a
-  command's first argument, and your copy is asleep while your tab is
-  hidden, which is when the key would be pressed.
+- A key can reach your tab through tab-host: `tab-host.toggle:<name>` opens
+  your tab or closes it again — your button's behaviour, toggle included — for
+  anyone who binds it in `keys.json` (`"cmd-alt-shift-i":
+  "tab-host.toggle:<name>"`). Nothing to write — it is why you should not try
+  to bind a key of your own: `keys.json` fills only a command's first argument,
+  and your copy is asleep while your tab is hidden, which is when the key would
+  be pressed.
 
 ## Rules that bit other mods here
 

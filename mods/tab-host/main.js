@@ -37,8 +37,9 @@
 // chip after the button's label, where it stays visible with the panel hidden.
 // This copy never counts anything itself.
 //
-// `tab-host.open:<mod>` does what that mod's button does, for a key bound to it
-// in keys.json (`"cmd-alt-shift-i": "tab-host.open:tab-notes"`). It has to
+// `tab-host.toggle:<mod>` opens that mod's tab or closes it again, for a key
+// bound to it in keys.json (`"cmd-alt-shift-i": "tab-host.toggle:tab-notes"`).
+// It has to
 // live here: keys.json fills a command's first argument only, so the two
 // commands a click runs (layout.select, layout.show) can't be bound, and a
 // contributor's own copy is asleep whenever its tab is hidden — which is when
@@ -156,6 +157,7 @@ export default class TabHost extends View {
     this.mani = {};    // mod name -> { title, icon, badge }, from the last scan
     this.written = null; // the child-id list the layout last got, so one state change is one layout.set
     this.px = null;      // the width the buttons last asked for
+    this.chips = null;   // chips drawn last render; null until one has been seen
     this.busy = false;
     // A key fills one command's first argument, so neither of the two commands
     // a click runs can be bound; this copy is the always-visible half of the
@@ -163,9 +165,10 @@ export default class TabHost extends View {
     // does, including the toggle: on the tab already showing, the panel goes
     // away. Unknown names, a missing stack, a missing panel column: silent
     // no-ops, the way a mod without a tab is simply not a contributor.
-    // What arrives is the part after `<mod>.` in the binding — `tab-host.open:
-    // <name>` reaches this loop as `open:<name>` — so the prefix it looks for
-    // is the command, not the mod.
+    // What arrives is the part after `<mod>.` in the binding — `tab-host.toggle:
+    // <name>` reaches this loop as `toggle:<name>` — so the prefix it looks for
+    // is the command, not the mod. `open:` is the name this had in its first
+    // cut; it still answers, so a binding written then keeps working.
     cx.spawn(async (cx) => {
       this.tell("key loop ready");
       for (;;) {
@@ -181,15 +184,15 @@ export default class TabHost extends View {
         // person can't inspect from outside, so one press is one line beside the
         // clicks. Only the buttons copy acts: a layout carrying another copy of
         // this mod without `buttons` must not answer the same press as well.
-        const name = command.startsWith("open:") ? command.slice("open:".length) : null;
+        const name = /^(?:toggle|open):/.test(command) ? command.slice(command.indexOf(":") + 1) : null;
         if (name === null) { this.tell("command \"" + command + "\" ignored"); continue; }
         if (props()?.buttons !== true) {
           this.tell("command \"" + command + "\" left to the buttons copy");
           continue;
         }
-        const opened = this.openTab(name);
-        this.tell("command \"" + command + "\" → " + (opened ? "opened" : "no tab named " + name));
-        if (opened) cx.notify();
+        const did = this.toggleTab(name);
+        this.tell("command \"" + command + "\" → " + (did || "no tab named " + name));
+        if (did) cx.notify();
       }
     });
     cx.spawn(async (cx) => {
@@ -207,12 +210,13 @@ export default class TabHost extends View {
     });
   }
 
-  // What a contributor's button does, and what `tab-host.open:<mod>` does: show
-  // the panel on that tab, or put the panel away when that tab is already the
-  // one showing. A click and a key both land here, so they can't drift apart.
-  // False for a name that is not in the stack or a props set with no panel:
-  // silent, the way a mod without a tab is simply not a contributor.
-  openTab(name) {
+  // What a contributor's button does, and what `tab-host.toggle:<mod>` does:
+  // show the panel on that tab, or put the panel away when that tab is already
+  // the one showing. A click and a key both land here, so they can't drift
+  // apart. Says which it did — "shown", "hidden" — or false for a name that is
+  // not in the stack or a props set with no panel: silent, the way a mod
+  // without a tab is simply not a contributor.
+  toggleTab(name) {
     const root = layout();
     const stack = myStack(root);
     const panel = props()?.panel ? find(root, props().panel) : null;
@@ -221,10 +225,10 @@ export default class TabHost extends View {
     if (panel.hidden || stack.active !== entry.id) {
       run("layout.select", { stack: stack.id, child: entry.id });
       run("layout.show", { id: panel.id });
-    } else {
-      run("layout.hide", { id: panel.id });
+      return "shown";
     }
-    return true;
+    run("layout.hide", { id: panel.id });
+    return "hidden";
   }
 
   // Keep the stack's children in step with the contributors. The tree that
@@ -339,9 +343,11 @@ export default class TabHost extends View {
     // without the mods folder changing, so the block is re-fitted here when the
     // count of chips changes — once per change, not per number: `setShared`
     // re-renders every copy, which is this notice, and no timer is involved.
+    // The first render only records the count: before the first scan there are
+    // no titles to measure, and asking for a width then would fit the block to
+    // nothing.
     const chips = entries.filter((e) => badgeOf(e.badge) > 0).length;
-    if (this.chips !== chips) {
-      this.chips = chips;
+    if (this.chips !== null && this.chips !== chips) {
       cx?.spawn?.(async () => {
         this.wrote = null;
         await this.fit();
@@ -351,6 +357,7 @@ export default class TabHost extends View {
         cx.notify();
       });
     }
+    this.chips = chips;
     const glyph = (icon, color) => {
       if (!icon) return null;
       const el = icon.endsWith(".svg") ? svg(icon) : image(icon);
@@ -365,7 +372,7 @@ export default class TabHost extends View {
         .hover((s) => s.bg(t.hover))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => {
-          if (!this.openTab(e.mod)) return;
+          if (!this.toggleTab(e.mod)) return;
           cx.notify();
         })
         .when(Boolean(e.icon), (el) => el.child(glyph(e.icon, color)))
