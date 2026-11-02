@@ -37,8 +37,8 @@
 // chip after the button's label, where it stays visible with the panel hidden.
 // This copy never counts anything itself.
 //
-// `tabhost.open:<mod>` does what that mod's button does, for a key bound to it
-// in keys.json (`"cmd-alt-shift-i": "tabhost.open:tab-notes"`). It has to
+// `tab-host.open:<mod>` does what that mod's button does, for a key bound to it
+// in keys.json (`"cmd-alt-shift-i": "tab-host.open:tab-notes"`). It has to
 // live here: keys.json fills a command's first argument only, so the two
 // commands a click runs (layout.select, layout.show) can't be bound, and a
 // contributor's own copy is asleep whenever its tab is hidden — which is when
@@ -147,6 +147,9 @@ export default class TabHost extends View {
     // does, including the toggle: on the tab already showing, the panel goes
     // away. Unknown names, a missing stack, a missing panel column: silent
     // no-ops, the way a mod without a tab is simply not a contributor.
+    // What arrives is the part after `<mod>.` in the binding — `tab-host.open:
+    // <name>` reaches this loop as `open:<name>` — so the prefix it looks for
+    // is the command, not the mod.
     cx.spawn(async (cx) => {
       this.tell("key loop ready");
       for (;;) {
@@ -188,7 +191,7 @@ export default class TabHost extends View {
     });
   }
 
-  // What a contributor's button does, and what `tabhost.open:<mod>` does: show
+  // What a contributor's button does, and what `tab-host.open:<mod>` does: show
   // the panel on that tab, or put the panel away when that tab is already the
   // one showing. A click and a key both land here, so they can't drift apart.
   // False for a name that is not in the stack or a props set with no panel:
