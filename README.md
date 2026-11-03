@@ -4,6 +4,8 @@ A shared tab section for [Herdr](https://herdr.dev): every mod gets its own
 button in the tab bar, next to Files and Changes, without one big mod and
 without one layout variant per mod.
 
+![The tab bar: Files and Changes with three contributor buttons beside them](assets/tabs30.png)
+
 The layout gives the tab bar one extra block:
 
 ```json
