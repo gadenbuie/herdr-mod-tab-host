@@ -60,6 +60,12 @@
 // the button and loses it if its own answer says no — a space change never
 // empties the bar and fills it again.
 //
+// Each space also gets its own panel. One layout serves every space and
+// `layouts/.state` keeps one active child and one hidden flag for all of them,
+// so arriving in a space would show the tab the person left open in the space
+// they came from. Instead the tab of ours a space had showing is written down
+// as the person leaves it, and put back when they return — see restore().
+//
 // `tab-host.toggle:<mod>` opens that mod's tab or closes it again, for a key
 // bound to it in keys.json (`"cmd-alt-shift-i": "tab-host.toggle:tab-notes"`).
 // It has to
@@ -184,12 +190,14 @@ const spaceKey = (s) => [s.id, s.machine ?? "", s.folder ?? ""].join("\u0000");
 const checkKey = (space, text) => spaceKey(space) + "\u0000" + text;
 const activeSpace = () => spaces().find((s) => s.active) ?? null;
 
-// What each space's tab.show answered, remembered between visits in
-// localStorage (a file here, which is why it outlives a restart; the key
-// carries this mod's name because storage is shared), under a key that carries
-// the space's id, machine and folder — so an entry never outlives what it
-// describes, and a worktree that becomes another checkout asks again.
+// The two things this copy remembers between visits, in localStorage (a file
+// here, which is why it outlives a restart; the keys carry this mod's name
+// because storage is shared): what each space's tab.show answered, and which
+// tab of ours each space had showing. Both are keyed by strings that carry the
+// space's id, machine and folder, so an entry never outlives what it describes
+// — a worktree that becomes another checkout asks again.
 const ANSWERS = "tab-host.answers";
+const OPEN = "tab-host.open";
 const KEEP = 400; // entries per map; the oldest go, so a long-lived install cannot grow forever
 
 function readMap(key) {
@@ -262,8 +270,15 @@ export default class TabHost extends View {
     // What each contributor's tab.show answered, for every space the person has
     // stood in: checkKey() -> true (draw) or false (don't). A space's answers
     // are kept when the person leaves it, so coming back draws its buttons at
-    // once instead of narrowing the bar to nothing and widening it again.
+    // once instead of narrowing the bar to nothing and widening it again. A key
+    // nobody has asked draws nothing — see visibleHere().
     this.checks = readMap(ANSWERS);
+    // Which tab of ours each space had showing when the person left it:
+    // spaceKey -> child id. One panel column serves every space, so this is the
+    // only place a space's own choice can live — see restore().
+    this.open = readMap(OPEN);
+    this.arrive = null;      // { child } while the space just entered is put back
+    this.last = null;        // { space, active, shown } as the shown space last was
     this.asked = new Set();  // check keys asked for during this visit
     this.asking = new Set(); // check keys whose exec is out, or waiting its turn
     this.queue = [];         // checks waiting for the worker, oldest first
@@ -343,10 +358,26 @@ export default class TabHost extends View {
     if (panel.hidden || stack.active !== entry.id) {
       run("layout.select", { stack: stack.id, child: entry.id });
       run("layout.show", { id: panel.id });
+      this.keepTab(this.space, entry.id);
       return "shown";
     }
     run("layout.hide", { id: panel.id });
+    // Closed on purpose: this space is not to be handed this tab back when the
+    // person returns to it, and no arrival of ours is still owed it.
+    this.keepTab(this.space, null);
+    this.arrive = null;
     return "hidden";
+  }
+
+  // Write down which tab of ours a space has open. key rather than this.space
+  // because the tab a space leaves behind is recorded as the person leaves it,
+  // when this.space already names the one they arrived in.
+  keepTab(key, child) {
+    if (!key) return;
+    const had = this.open.get(key) ?? null;
+    if (child === had) return;
+    if (child) this.open.set(key, child); else this.open.delete(key);
+    writeMap(OPEN, this.open);
   }
 
   // Is this contributor's button drawn where the person is standing now? No
@@ -379,6 +410,10 @@ export default class TabHost extends View {
     const here = space ? spaceKey(space) : "";
     let arrived = false;
     if (here !== this.space) {
+      // What the space being left had open is decided now, from the last frame
+      // that was its own: by this point the panel may already have been handed
+      // to the space arriving.
+      this.leaving(this.space);
       // A check nobody has started for a space the person is no longer in is
       // not worth running now; one already out keeps its answer, which is that
       // space's memo.
@@ -390,6 +425,9 @@ export default class TabHost extends View {
       this.space = here;
       this.asked = new Set();
       this.settled = null;
+      // The tab this space had of ours when the person left it, to put back
+      // once its answers are in — see restore().
+      this.arrive = { child: this.open.get(here) ?? null };
       arrived = true;
     }
     if (!space) return arrived;
@@ -501,6 +539,53 @@ export default class TabHost extends View {
       run("layout.hide", { id: panel.id });
       this.tell("active " + active.id + " is not drawn here → hide " + panel.id);
     }
+  }
+
+  // Put back the tab this space had of ours showing when the person left it.
+  // The panel is one column for every space — one layout serves them all, and
+  // layouts/.state keeps one active child and one hidden flag for all of them —
+  // so a space arrives still showing the tab of the space that was left. The
+  // shipped tab bar remembers its own per space (files and changes, in its own
+  // localStorage map) and hides a child it does not know there, which is the
+  // second thing this has to come after: both decide on the frame the space
+  // changes, and this one asks for the tab last.
+  restore(space) {
+    const want = this.arrive;
+    if (!want || !space) return;
+    // This space's answers are still out, and one of them may be why the tab is
+    // not drawn here: putting it back now could be a panel opening on a tab
+    // that settle() then takes away. Waiting is one answer away — this space
+    // was visited before, which is the only way there is a tab to put back.
+    if (this.pending(space)) return;
+    this.arrive = null;
+    if (!want.child) return;
+    const root = layout();
+    const stack = myStack(root);
+    const panel = props()?.panel ? find(root, props().panel) : null;
+    if (!stack || !panel) return;
+    const entry = (stack.children ?? []).find((c) => c.id === want.child);
+    if (!entry) return; // the mod it belonged to is gone
+    if (!this.visibleHere(this.mani[entry.content?.mod], space)) return;
+    run("layout.select", { stack: stack.id, child: entry.id });
+    run("layout.show", { id: panel.id });
+    this.keepTab(this.space, entry.id);
+    this.tell("back to " + entry.id + " in " + space.name);
+  }
+
+  // What a space left open, taken as the person leaves it. A tab of ours on
+  // screen there is what they left open, so it is what comes back; anything
+  // else showing is the space's own choice made over it — Files, Changes — and
+  // the tab remembered for it goes with the switch. A panel hidden says
+  // nothing: the shipped tab bar hides what a space did not choose, and a tab
+  // of ours the person closed is already forgotten where it was closed.
+  //
+  // The frame this reads is the last one this copy saw of that space rather
+  // than layout() now, because a command of ours takes a frame to land and
+  // another mod decides the panel on the same frame the space changes.
+  leaving(key) {
+    const seen = this.last;
+    if (!key || !seen || seen.space !== key || !seen.shown) return;
+    this.keepTab(key, seen.active.startsWith("tabhost-") ? seen.active : null);
   }
 
   // Keep the stack's children in step with the contributors. The tree that
@@ -617,6 +702,13 @@ export default class TabHost extends View {
     // changes, and this copy is one of them.
     const space = activeSpace();
     const arrived = this.checkSpace(space, cx);
+    // The tab this space had comes back before the bar is read for it. Not on
+    // the frame the space changed, and not while an arrival is still being put
+    // back: those frames still describe the space that was left.
+    this.restore(space);
+    if (!arrived && !this.arrive)
+      this.last = { space: this.space, active: String(stack.active ?? ""),
+                    shown: Boolean(panel && !panel.hidden) };
     // A space change changes which buttons are drawn — a space nobody has asked
     // yet draws all of them — so the block is fitted for it now, in the same
     // task the badge refit below uses, rather than at the first answer: on a

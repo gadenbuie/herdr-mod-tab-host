@@ -115,7 +115,10 @@ away only if that space's own answer says no — the bar never empties itself on
 a space change, and a remote space doesn't spend a round trip without its
 buttons. tab-host logs every answer as `show roborev → no (code 1)` in
 `reconcile.log`, so a button that doesn't appear can be looked up rather than
-guessed at.
+guessed at. Each
+space also comes back to the tab it had open: a tab contributed here that was
+showing when the person left a space is selected and shown again when they
+return, which the one shared panel column cannot do on its own.
 
 `herdr`'s `shared("tabhost.panels")` is a second door: a list of extra mod
 names (set with `setShared`, or edited into `shared.json`) for a mod that

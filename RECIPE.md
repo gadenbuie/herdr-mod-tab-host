@@ -114,6 +114,27 @@ asked one at a time by a worker the copy starts in `init`: three fanned out at
 once to one remote machine came back as one, and two buttons that never answer
 are two buttons that never come back.
 
+**Which tab, in which space.** The panel is one column for every space — one
+layout serves them all, and `layouts/.state` records one active child and one
+hidden flag for all of them — so a space arriving cannot ask the layout what
+it had open: the answer is the tab of the space just left. The shipped tab
+bar remembers Files and Changes per space, in a `localStorage` map of its own
+(`workspace.panels` names the children it may restore), and hides a child it
+does not know there — which is why a tab contributed here used to be closed
+every time its space came back. So this copy keeps its own map
+(`tab-host.open`, space key → child id): a tab of ours on screen when the
+person leaves a space is what they left open, and it is selected and shown
+again on the way back — in the frame the space changes, after the tab bar has
+had its say for that frame, and only once the space's answers are in, since a
+button `tab.show` keeps away is not a tab to put back. A space whose panel
+was showing Files or Changes chose those over any tab of ours, and the tab
+remembered for it goes; a panel left hidden says nothing either way, because
+the tab bar hides what a space did not choose. Closing a tab with its button
+or its key forgets it, so a space never hands back a tab the person shut.
+What a space left open is read from the last frame that was that space's own
+(`this.last`), not from `layout()` as the space changes: a command takes a
+frame to land, and another mod decides the panel on that same frame.
+
 **The key** (`tab-host.toggle:<mod>`) is the same copy's `nextCommand()` loop,
 and the same `toggleTab(name)` a click runs — one function, so a key and a
 button can't drift apart. It reports what it did (`shown`, `hidden`), so the
@@ -275,9 +296,16 @@ space (`test "$(pwd)" != …`), reading `reconcile.log` for what changed:
   (71 → 151 → 254).
 - First visit with the scratch contributor: the bar drew all five buttons and
   one resize took it from 332 to 254 when `show spacecheck → no` came back.
+- `tab-host.toggle:plannotator` in one space, away, and back: `back to
+  tabhost-plannotator in recall`, the panel on that tab, the button
+  highlighted. Closing it with the same key first meant no `back to` line —
+  a shut tab stays shut.
+- Choosing Files in the shipped tab bar and then leaving: the space's entry
+  in `data/tab-host/store-*.json` (`tab-host.open`) is gone, and coming back
+  restores Files rather than a tab of ours.
 - Touching the installed `main.js` to restart the copy: the switch after the
-  restart still logged no resize, so the answers came back out of
-  `localStorage` and not out of memory.
+  restart still logged no resize, so the answers and the remembered tab came
+  back out of `localStorage`, not out of memory.
 
 ## Built from
 
