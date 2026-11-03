@@ -23,11 +23,25 @@ change, N contributors, each contributing by existing.
 becomes a row with one extra block, and the side panel keeps its stack:
 
 ```json
-{ "id": "tab-bar", "type": "row", "size": { "px": 42 }, "resizable": false, "children": [
-  { "id": "tabs", "type": "block", "content": { "mod": "tabs" }, "window_drag": true },
-  { "id": "tabhost-buttons", "type": "block", "size": { "px": 72 },
-    "content": { "mod": "tab-host",
-                 "props": { "stack": "panel-body", "panel": "panel", "buttons": true } } } ] }
+{
+  "id": "tab-bar",
+  "type": "row",
+  "size": { "px": 42 },
+  "resizable": false,
+  "children": [
+    { "id": "tabs", "type": "block", "content": { "mod": "tabs" }, "window_drag": true },
+    {
+      "id": "tabhost-buttons",
+      "type": "block",
+      "size": { "px": 90 },
+      "window_drag": true,
+      "content": {
+        "mod": "tab-host",
+        "props": { "stack": "panel-body", "panel": "panel", "buttons": true }
+      }
+    }
+  ]
+}
 ```
 
 `props {stack}` names the stack the contributors' blocks join; `props
@@ -44,7 +58,7 @@ ones, and backs up each file it touches.
 `mod.json`:
 
 ```json
-{ "place": "none", "tab": { "title": "Notes", "icon": "examples/tab-notes/note.svg" } }
+{ "place": "none", "tab": { "title": "Notes", "icon": "mods/<name>/icon.svg" } }
 ```
 
 `place: "none"` keeps Herdr from docking a copy anywhere on its own. `icon`

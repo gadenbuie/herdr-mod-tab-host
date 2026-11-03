@@ -4,7 +4,7 @@
 //
 //   { "id": "tab-bar", "type": "row", "resizable": false, "children": [
 //     { "id": "tabs", "type": "block", "content": { "mod": "tabs" }, "window_drag": true },
-//     { "id": "tabhost-buttons", "type": "block", "size": { "px": 90 },
+//     { "id": "tabhost-buttons", "type": "block", "size": { "px": 90 }, "window_drag": true,
 //       "content": { "mod": "tab-host",
 //                    "props": { "stack": "panel-body", "panel": "panel", "buttons": true } } } ] }
 //

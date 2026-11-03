@@ -108,7 +108,7 @@ herdr-app check ~/.config/herdr-app/mods/<name>
 That is the whole dependency on this repo: none at build time. tab-host
 watches the mods folder and adds your button and your block the moment the
 copy lands — and removes them when the folder goes. You never run this
-repo's `install.sh` (it deploys tab-host itself and the example below, and
+repo's `install.sh` (it deploys this repo's mods — tab-host — and
 wires the layouts; it belongs to this repo's owner), and you never edit a
 layout.
 
