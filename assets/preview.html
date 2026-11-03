@@ -43,7 +43,7 @@
   h1 .tab { color: var(--accent); }
   p.pitch {
     margin-top: 16px;
-    max-width: 900px;
+    max-width: 840px;
     font-size: 18.5px;
     line-height: 1.45;
     color: var(--muted);
@@ -87,8 +87,7 @@
   .tb.active { background: var(--chip); color: var(--fg); }
   .tb.active .glyph { color: var(--accent); }
   .tb.shipped { margin-right: 2px; }
-  .join-mark { display: flex; align-items: center; height: 20px; padding: 0 14px; }
-  .join-mark i { display: block; width: 1px; height: 18px; background: #3a3c40; }
+  .tb.push-right { margin-left: auto; }
   .badge {
     margin-left: 2px; padding: 1px 6px;
     border-radius: 99px;
@@ -182,7 +181,7 @@ provenance.
 <h1>Every mod gets its own <span class="tab">tab</span>.</h1>
 
 <p class="pitch">One line in <code>mod.json</code> — no code, no layout edits —
-and any mod with a panel joins Files and Changes in the tab bar.</p>
+and any mod with a panel can join the tab bar.</p>
 
 <div class="window">
   <div class="tabbar">
@@ -190,8 +189,7 @@ and any mod with a panel joins Files and Changes in the tab bar.</p>
     <div class="tb"><svg class="glyph" width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
     <div class="tb shipped"><svg class="glyph" width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M1.5 4.5C1.5 3.4 2.4 2.5 3.5 2.5h3l1.5 2h4.5c1.1 0 2 .9 2 2v7c0 1.1-.9 2-2 2h-9c-1.1 0-2-.9-2-2v-7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>Files</div>
     <div class="tb shipped"><svg class="glyph" width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="4.5" cy="4.5" r="2.3" stroke="currentColor" stroke-width="1.4"/><circle cx="11.5" cy="11.5" r="2.3" stroke="currentColor" stroke-width="1.4"/><path d="M6.3 6.3l3.4 3.4M11.5 9.2V4.5M9.2 11.5H4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Changes</div>
-    <div class="join-mark"><i></i></div>
-    <div class="tb active"><svg class="glyph" width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 2h7.2L13 4.8V14H3V2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 7h5M5.5 10h3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Notes<span class="badge">3</span></div>
+    <div class="tb push-right active"><svg class="glyph" width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 2h7.2L13 4.8V14H3V2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 7h5M5.5 10h3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Notes<span class="badge">3</span></div>
     <div class="tb"><svg class="glyph" width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.9" stroke="currentColor" stroke-width="1.4"/></svg>Reviews</div>
     <div class="tb"><svg class="glyph" width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.6V8l2.4 1.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Clock</div>
   </div>
