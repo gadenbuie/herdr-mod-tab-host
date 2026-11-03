@@ -75,9 +75,10 @@ machines and not others.
 button per contributor — the stack's `tabhost-*` children — styled after the
 shipped Files and Changes buttons, which keep their own buttons. The active
 state is the panel shown *and* its stack child active, read from `layout()`
-(which reflects clicks), so the mod never remembers state of its own. A
-click does what those buttons do: shown on it → `layout.hide {panel}`;
-otherwise `layout.select {stack, child}` + `layout.show {panel}`. The block's
+(which reflects clicks), so a copy that starts late still highlights the
+button that is showing. A click does what those buttons do: shown on it →
+`layout.hide {panel}`; otherwise `layout.select {stack, child}` +
+`layout.show {panel}`. The block's
 width is fitted to the buttons it draws: an estimate from the titles and
 icons, applied with `layout.resize {id, px}` when it differs — the layout
 file seeds a width, the copy corrects it, and both agree from then on. A
@@ -89,20 +90,29 @@ the bar under the person's cursor.
 is not per space either: `tab.show` answers for the space being shown, and
 that is the one fact about a button the person's context changes. The answers
 are memoized under everything they depend on — the space's id, its machine,
-its folder and the text itself — and the ones that belong to a space the
-person has left are dropped, so coming back asks again rather than trusting a
-folder or a machine that may have moved since. No answer yet is not a yes: a
-button stays away until its check returns, which is why switching to a space
-briefly narrows the block and then widens it as the answers land. `fit()`
-filters the same way `render()` does, so a hidden button takes no room, and
-`toggleTab()` refuses one, so the key can't open a tab the bar isn't
-showing. If the child the panel is showing goes hidden, the copy selects the
-first that is still drawn, or hides the panel when none is — once per change.
-Every answer is one line in the log (`show roborev → no (code 1)`), which is
-the only way to see why a button is missing. The checks are asked one at a
-time by a worker the copy starts in `init`: three fanned out at once to one
-remote machine came back as one, and two buttons that never answer are two
-buttons that never come back.
+its folder and the text itself — and they outlive the visit: they are kept in
+`localStorage`, so a space the person has been in draws its buttons the moment
+it arrives instead of narrowing the block to nothing and widening it again,
+and a restart starts just as full. A visit still asks every question again,
+once per contributor (`this.asked`, so a render cannot ask a hundred times),
+and an answer that comes back different takes its button away — until then the
+memo is what is on the screen, not the truth. A space nobody has visited has
+no answer to draw from, so it draws the button and loses only the ones its own
+answers refuse: unanswered is a yes until the check says otherwise, because
+the other way round is a bar that empties itself on every space change and
+fills again as the answers land, the block narrowing to nothing and back — a
+round trip of it on a remote space. A tab opened from a button drawn in that
+window is closed again by `settle()` the moment the answer lands, which is the
+price, and a space that has already said no never draws the button again.
+`fit()` filters the same way `render()` does, so a button that is not drawn
+takes no room, and `toggleTab()` refuses one, so the key can't open a tab the
+bar isn't showing. If the child the panel is showing goes hidden, the copy
+selects the first that is still drawn, or hides the panel when none is — once
+per change. Every answer is one line in the log (`show roborev → no (code
+1)`), which is the only way to see why a button is missing. The checks are
+asked one at a time by a worker the copy starts in `init`: three fanned out at
+once to one remote machine came back as one, and two buttons that never answer
+are two buttons that never come back.
 
 **The key** (`tab-host.toggle:<mod>`) is the same copy's `nextCommand()` loop,
 and the same `toggleTab(name)` a click runs — one function, so a key and a
@@ -254,6 +264,20 @@ second button beside it. `toggleTab` was driven from a timer patch in the
 installed copy — synthetic key events need an Accessibility grant this
 machine does not have — with the side panel **hidden**: the panel came back
 on that contributor's tab, and the next call put it away again.
+
+Spaces were confirmed on the installed copy with the person's own four
+contributors and one scratch one whose `show` passes everywhere except one
+space (`test "$(pwd)" != …`), reading `reconcile.log` for what changed:
+
+- Second visit to a space: `refit for <space>` and the answers, no resize
+  between them — the block never narrows, so no button left the bar. Before
+  this, every switch logged the width growing back one answer at a time
+  (71 → 151 → 254).
+- First visit with the scratch contributor: the bar drew all five buttons and
+  one resize took it from 332 to 254 when `show spacecheck → no` came back.
+- Touching the installed `main.js` to restart the copy: the switch after the
+  restart still logged no resize, so the answers came back out of
+  `localStorage` and not out of memory.
 
 ## Built from
 

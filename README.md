@@ -106,11 +106,16 @@ machine. Exit 0 draws the button; a nonzero exit, or an exec that can't start
 (the program isn't there, the machine is away), keeps it away. Absent draws
 always. So roborev's manifest can say `"show": "command -v roborev
 >/dev/null 2>&1"` and the button appears in the spaces whose machine has it —
-one bar, several spaces, and a button that means something in each. The
-buttons are hidden until the check answers for the space being shown, which
-is a round trip on a remote one; tab-host logs every answer as `show roborev
-→ no (code 1)` in `reconcile.log`, so a button that doesn't appear can be
-looked up rather than guessed at.
+one bar, several spaces, and a button that means something in each. Every
+answer is remembered for its space, in `localStorage`, so a restart keeps it:
+coming back to a space draws its buttons at once while the check runs again
+behind them, and only an answer that changed takes one away. A space nobody has
+visited yet has no answer to draw from, so it draws the button and takes it
+away only if that space's own answer says no — the bar never empties itself on
+a space change, and a remote space doesn't spend a round trip without its
+buttons. tab-host logs every answer as `show roborev → no (code 1)` in
+`reconcile.log`, so a button that doesn't appear can be looked up rather than
+guessed at.
 
 `herdr`'s `shared("tabhost.panels")` is a second door: a list of extra mod
 names (set with `setShared`, or edited into `shared.json`) for a mod that

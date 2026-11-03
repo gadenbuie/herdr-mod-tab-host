@@ -47,7 +47,9 @@ A contributor is an ordinary mod in this repo's `mods/<name>/` whose
   — `"show": "command -v roborev >/dev/null 2>&1"` draws the button on the
   laptop and not on the build box. It is one cheap command, not a script: the
   bar is shared by every space, so the check runs again each time the shown
-  space changes, and the button stays away until the answer arrives. A hidden
+  space changes. The answers are remembered per space, so a space already
+  visited draws its buttons at once; a space nobody has been in yet draws them
+  too and the check takes away the ones it refuses. A hidden
   button is hidden everywhere it would act: not drawn, no width reserved, its
   `tab-host.toggle:` key answered with a nothing-to-do.
 - The same field under the name `button` works too

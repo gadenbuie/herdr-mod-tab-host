@@ -52,8 +52,13 @@
 // what every contributor got before this existed: a mod whose program is
 // everywhere omits it, and one whose program is on the laptop and not on the
 // build box asks with `command -v`. One answer is one space — the bar is not
-// per space, so the check runs again when the shown space changes, and the
-// button stays away until the answer for that space arrives.
+// per space — so the check runs again when the shown space changes. What each
+// space answered is remembered (`localStorage`, so a restart keeps it), which
+// is what draws a space's buttons the moment the person comes back to it: the
+// check still runs behind them, and only an answer that changed takes a button
+// away. A space nobody has been in yet has no answer to remember, so it draws
+// the button and loses it if its own answer says no — a space change never
+// empties the bar and fills it again.
 //
 // `tab-host.toggle:<mod>` opens that mod's tab or closes it again, for a key
 // bound to it in keys.json (`"cmd-alt-shift-i": "tab-host.toggle:tab-notes"`).
@@ -179,6 +184,27 @@ const spaceKey = (s) => [s.id, s.machine ?? "", s.folder ?? ""].join("\u0000");
 const checkKey = (space, text) => spaceKey(space) + "\u0000" + text;
 const activeSpace = () => spaces().find((s) => s.active) ?? null;
 
+// What each space's tab.show answered, remembered between visits in
+// localStorage (a file here, which is why it outlives a restart; the key
+// carries this mod's name because storage is shared), under a key that carries
+// the space's id, machine and folder — so an entry never outlives what it
+// describes, and a worktree that becomes another checkout asks again.
+const ANSWERS = "tab-host.answers";
+const KEEP = 400; // entries per map; the oldest go, so a long-lived install cannot grow forever
+
+function readMap(key) {
+  try { return new Map(Object.entries(JSON.parse(localStorage.getItem(key) ?? "{}"))); }
+  catch { return new Map(); }
+}
+
+// Written only on a change: each set is a file write, and this copy renders
+// constantly. A storage that refuses the write costs the memory, not the copy.
+function writeMap(key, map) {
+  while (map.size > KEEP) map.delete(map.keys().next().value);
+  try { localStorage.setItem(key, JSON.stringify(Object.fromEntries(map))); }
+  catch (e) { console.log("tab-host: remembering " + key + " —", e?.message ?? e); }
+}
+
 // The number a contributor publishes for its own badge key: read here, never
 // computed here. Missing, not a number, or zero means no chip — every caller
 // asks this, so the chip and the room it needs can't disagree.
@@ -233,16 +259,16 @@ export default class TabHost extends View {
     this.px = null;      // the width the buttons last asked for
     this.chips = null;   // chips drawn last render; null until one has been seen
     this.busy = false;
-    // What each contributor's tab.show answered where the person is now standing:
-    // checkKey() -> true (draw) or false (don't). A key that isn't here has no
-    // answer yet, which draws nothing — see visibleHere(). Drop in this.space
-    // when the shown space changes, so an answer never outlives what it was
-    // about.
-    this.checks = new Map();
+    // What each contributor's tab.show answered, for every space the person has
+    // stood in: checkKey() -> true (draw) or false (don't). A space's answers
+    // are kept when the person leaves it, so coming back draws its buttons at
+    // once instead of narrowing the bar to nothing and widening it again.
+    this.checks = readMap(ANSWERS);
+    this.asked = new Set();  // check keys asked for during this visit
     this.asking = new Set(); // check keys whose exec is out, or waiting its turn
     this.queue = [];         // checks waiting for the worker, oldest first
     this.kick = null;        // the worker's resolver while it has nothing to do
-    this.space = "";         // the space every answer here belongs to (spaceKey)
+    this.space = "";         // the space entered last (spaceKey)
     this.settled = null;     // the state the active-child decision was last made for
     // A key fills one command's first argument, so neither of the two commands
     // a click runs can be bound; this copy is the always-visible half of the
@@ -324,40 +350,52 @@ export default class TabHost extends View {
   }
 
   // Is this contributor's button drawn where the person is standing now? No
-  // tab.show draws it, whatever the space; one that has an answer draws it when
-  // that answer was yes. No answer yet is not a yes: the check answers in
-  // milliseconds here and a round trip away, and a button that arrives a beat
-  // after its space does is better than one that appears and then goes, taking
-  // a click with it. Everything that decides what is on screen asks this —
-  // render, fit, toggleTab, the active-child fix below — so the bar, the room
-  // it takes and the tabs a key may open cannot disagree.
+  // tab.show draws it, whatever the space; one draws it until an answer for
+  // this space says no. Unanswered draws, because the other way round is a bar
+  // that empties itself on every space change and fills again as the checks
+  // land — the whole block narrowing to nothing and back is what the person
+  // sees, and on a remote space it is a round trip of it. A button drawn in
+  // that window can be clicked, and a tab it opened is closed again by
+  // settle() as soon as the answer lands, which is the small price for a bar
+  // that only ever changes for a reason. An answer this space gave before is
+  // the answer that draws it in that window, so a machine that has already
+  // said no never draws the button again. Everything that decides what is on
+  // screen asks this — render, fit, toggleTab, the active-child fix below — so
+  // the bar, the room it takes and the tabs a key may open cannot disagree.
   visibleHere(m, space) {
     const text = showText(m);
     if (!text) return true;
-    return Boolean(space) && this.checks.get(checkKey(space, text)) === true;
+    if (!space) return false;
+    return this.checks.get(checkKey(space, text)) !== false;
   }
 
-  // Ask every conditional contributor about this space, once each: the answers
-  // live in this.checks under everything they depend on, and the ones that are
-  // not this space's are dropped, along with any check still waiting its turn,
-  // when the shown space changes. Called from render, which is where a space
-  // change (live spaces(), re-rendered by Herdr) arrives.
+  // Ask every conditional contributor about this space, once each per visit:
+  // the answers live in this.checks under everything they depend on, and they
+  // are kept when the person leaves a space, because they are what draws that
+  // space's bar the next time it arrives. Called from render, which is where a
+  // space change (live spaces(), re-rendered by Herdr) arrives; says whether
+  // one just did.
   checkSpace(space, cx) {
     const here = space ? spaceKey(space) : "";
+    let arrived = false;
     if (here !== this.space) {
-      this.space = here;
-      for (const key of [...this.checks.keys()])
-        if (!key.startsWith(here + "\u0000")) this.checks.delete(key);
+      // A check nobody has started for a space the person is no longer in is
+      // not worth running now; one already out keeps its answer, which is that
+      // space's memo.
       this.queue = this.queue.filter((job) => {
         if (job.key.startsWith(here + "\u0000")) return true;
         this.asking.delete(job.key);
         return false;
       });
+      this.space = here;
+      this.asked = new Set();
       this.settled = null;
+      arrived = true;
     }
-    if (!space) return;
+    if (!space) return arrived;
     for (const m of Object.values(this.mani))
       this.ask(m, space, cx);
+    return arrived;
   }
 
   // Queue one contributor's tab.show. The exec itself runs in the one worker
@@ -367,7 +405,10 @@ export default class TabHost extends View {
     const text = showText(m);
     if (!text) return;
     const key = checkKey(space, text);
-    if (this.checks.has(key) || this.asking.has(key)) return;
+    // Asked once per visit, not once per answer: a remembered answer does not
+    // stop this visit's check, and a check already out or queued is enough.
+    if (this.asked.has(key) || this.asking.has(key)) return;
+    this.asked.add(key);
     this.asking.add(key);
     this.queue.push({ name: m.name, space, key, text });
     this.kick?.();
@@ -405,10 +446,14 @@ export default class TabHost extends View {
       why = "exec failed: " + (e?.message ?? e);
     }
     this.asking.delete(key);
-    // The space moved on while this ran: its answer is about a space nobody is
-    // in any more, and the next one to be entered asks again.
+    // Kept whatever space is shown now: it is that space's answer, and the
+    // space it is about may be the one the person comes back to. Only the space
+    // on screen has anything to react to, and this is seen across the spaces.
+    if (this.checks.get(key) !== ok) {
+      this.checks.set(key, ok);
+      writeMap(ANSWERS, this.checks);
+    }
     if (!key.startsWith(this.space + "\u0000")) return;
-    this.checks.set(key, ok);
     const what = "show " + name + " → " + (ok ? "yes" : "no") + " (" + why + ")";
     // The bar loses or gains a button: the block is now the wrong width, and the
     // panel may be showing a tab that just went away. Both after the answer is
@@ -571,7 +616,20 @@ export default class TabHost extends View {
     // spaces() is live data, so Herdr re-renders every copy when the shown space
     // changes, and this copy is one of them.
     const space = activeSpace();
-    this.checkSpace(space, cx);
+    const arrived = this.checkSpace(space, cx);
+    // A space change changes which buttons are drawn — a space nobody has asked
+    // yet draws all of them — so the block is fitted for it now, in the same
+    // task the badge refit below uses, rather than at the first answer: on a
+    // remote space that would be the previous space's width holding the new
+    // space's buttons for a round trip. Not before the first scan (this.seen):
+    // there are no titles to measure, and a width of nothing is the seed the
+    // layout already has.
+    if (arrived && this.seen) cx?.spawn?.(async () => {
+      this.wrote = null;
+      await this.fit();
+      this.tell("refit for " + space.name);
+      cx.notify();
+    });
     const entries = (stack.children ?? [])
       .filter((c) => String(c.id ?? "").startsWith("tabhost-"))
       .map((c) => {
