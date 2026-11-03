@@ -73,7 +73,9 @@ sorts contributors among themselves. `show` is a shell string run as
 `sh -c` in the shown space's folder on that space's machine: exit 0 draws
 the button, anything else and an exec that can't start keeps it away,
 absent draws always — the field for a mod whose program is on some machines
-and not others.
+and not others. `state` names a `shared()` key the contributor keeps its
+live state in, and this copy keeps one value of it per space — the field
+for a panel whose view belongs to the workspace, described below.
 
 **Buttons and clicks.** The active state is the panel shown *and* its stack
 child active, read from `layout()` (which reflects clicks), so a copy that
@@ -135,6 +137,33 @@ it, so a space never hands back a tab the person shut. What a space left
 open is read from the last frame that was that space's own (`this.last`),
 not from `layout()` as the space changes: a command takes a frame to land,
 and another mod decides the panel on that same frame.
+
+**Whose state, in which space.** A contributor may name a shared key in
+`tab.state` and keep its live state in it — what its panel is showing, what
+the person opened — and this copy carries that key across a space change:
+what it holds as the person leaves is the space being left's, saved under
+it (a third `localStorage` map, `tab-host.state`), and the space arriving
+gets its own back, `null` when it never had any, so a space starts fresh
+rather than inheriting the one just left. The mod's own copy is out of the
+loop, asleep or awake — a shared key is the one thing that can change
+hands without it, and the moment a space changes is exactly when its tab
+may be hidden, which is why the carry lives here and not in the
+contributor. Only the buttons copy carries it, the same copy that answers
+keys: two copies rendering one space change would read each other's
+half-done carry and credit the wrong space with the values in the key.
+`from` is the space this copy's last render was of, which is whose values
+the key holds; empty on this copy's first frame (a restart, a hot reload),
+where whatever the key holds is taken as the space in front of the person
+— so a reload mid-visit neither rolls the space back nor hands its state
+to the next one. The restore lands from a spawned task, never the render
+the carry runs in — `setShared` re-renders every mod, and one from inside
+a render would re-enter this copy's checkSpace mid-carry — and while the
+task is out the keys still hold the space just left's values, so a carry
+arriving before it lands snapshots the slot being restored (`restoreTo`)
+instead. A value too big to keep (32 KiB of JSON — every space's
+every contributor shares the one file) is dropped with a line in the log
+rather than breaking the file for everyone, and the carry itself is
+logged, `state <space> → <space>`.
 
 **The key** (`tab-host.toggle:<mod>`) is the same copy's `nextCommand()`
 loop, and the same `toggleTab(name)` a click runs — one function, so a key
@@ -257,8 +286,9 @@ matter and neither side needs the other's build.
 `spaces()`, `shared()`; writes `layout.set`, `layout.select`,
 `layout.show`, `layout.hide`, `layout.resize`; runs `nextCommand()` for the
 toggle key, `exec` for each `tab.show` check, `watchFolder` on the mods
-folder; keeps its two maps in `localStorage` (`tab-host.answers`,
-`tab-host.open`); the log is rewritten whole from a ring in memory — read
+folder; keeps its three maps in `localStorage` (`tab-host.answers`,
+`tab-host.open`, `tab-host.state`) and sets a contributor's `tab.state`
+keys with `setShared` as spaces change; the log is rewritten whole from a ring in memory — read
 with `readTextFile`, written with `writeTextFile` against what was read,
 so a concurrent write loses nothing but a line. It styles with `theme()`
 and draws with `div`/`svg`/`image` from `gpui-kit` and `h_flex` from
@@ -309,6 +339,25 @@ named it.
   `install.sh` and never lands in `mods/`; its install is its own copy
   into `~/.config/herdr-app/mods/<name>/`, and it should still be worth
   having with tab-host absent (as a pane via `pane.split --mod <name>`).
+- **`setShared` had to be imported.** This mod never wrote a shared value
+  before `tab.state` did, so the import list didn't carry it — and the
+  first cut of the carry called it anyway. `setShared is not a function`
+  threw inside render, which froze the carry midway: `this.space` never
+  moved on, so every arrival after re-carried FROM the same dead space,
+  the render crashed each frame, and nothing said so — `reconcile.log`
+  simply went quiet while the store kept filling with values credited to
+  the wrong space. A render that throws is silent from outside; the log
+  going quiet is the symptom. `herdr-app check` didn't catch it (the
+  harness never reached a restore) and neither did `status`
+  (`errors` stayed empty).
+- **A field named like a method.** The carry's in-flight marker started
+  life as `this.pending` — which shadowed the `pending(space)` method that
+  settle() and restore() call, so both broke with `not a function` the
+  moment the second cut loaded, and every reconcile line after carried
+  `WARN: not a function`. The warn rides every `tell()` until a successful
+  reconcile clears it, so one look at the log names the bug; the fix was
+  renaming the field (`restoreTo`). Fields and methods share `this` with
+  no warning — check both lists before naming one.
 - **Written against herdr-app 0.1.12.** The build leans on what that
   version does: mods behind symlinked folders don't start, `nextCommand()`
   hands a bound command's argument to the always-visible copy, and the
@@ -383,3 +432,22 @@ space (`test "$(pwd)" != …`), reading `reconcile.log` for what changed:
 - Touching the installed `main.js` to restart the copy: the switch after
   the restart still logged no resize, so the answers and the remembered
   tab came back out of `localStorage`, not out of memory.
+
+`tab.state` was confirmed with a scratch contributor (a `statecheck` copy
+of the example whose manifest named `"statecheck.view"`, ticking a value
+that named the space it was written in), switching between the person's
+own space and a throwaway one:
+
+- Arriving in a space with nothing saved: the key read `null` at once —
+  the panel's own next write was that space's first — and leaving saved
+  that slot under the space's `id + machine + folder` key.
+- Coming back: the key held the exact value from before the switch (not
+  the throwaway space's), and the store held one slot per space, each
+  with the value its own visit wrote.
+- A mid-visit reload of the installed `main.js` (the copy restarting with
+  `this.space` empty): the switch after it carried `from` the space in
+  front of the person, so a reload neither rolled a space back nor handed
+  its state to the next one.
+- Every carry is a `state <space> → <space>` line in `reconcile.log` —
+  which is how the first cut's freeze was found: arrivals stopped logging
+  while the store kept filling. When the log goes quiet, something threw.

@@ -52,6 +52,23 @@ A contributor is an ordinary mod in this repo's `mods/<name>/` whose
   too and the check takes away the ones it refuses. A hidden
   button is hidden everywhere it would act: not drawn, no width reserved, its
   `tab-host.toggle:` key answered with a nothing-to-do.
+- `tab.state` — optional, the name of a `shared()` key you keep your live
+  state in: what your panel is showing, what the person opened. tab-host
+  keeps one value of that key per space — the value is saved under the space
+  being left and the space arriving gets its own back, `null` when it never
+  had any — so the state sticks to the workspace and comes back when the
+  person does. You never mention spaces yourself: write the key with
+  `setShared` whenever your state changes, read it in `render()`, treat
+  `null` (or nothing) as "start fresh", and make the key the whole of your
+  state — your copy may be asleep the moment a space changes, and the shared
+  key is what carries across. Write it only from your panel's own doings — a
+  click, a render while you are showing — not from background work: a copy
+  asleep in one space would otherwise write its stale view into whatever
+  space the person is in, and it would be saved as that space's. Keep the key
+  yours (`<mod>.state`, the way `tab.badge`'s is) and the value small JSON;
+  an entry past 32 KiB is
+  dropped, since every space's every contributor shares one file. Without the
+  field your keys behave as any shared key does, one value everywhere.
 - The same field under the name `button` works too
   (herdrdev/herdr-app#246 proposes that name for the core; either joins).
 - `main.js` — any Herdr mod: default-exports a class extending `View`, with

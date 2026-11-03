@@ -17,6 +17,12 @@ Replace "the smallest version of the idea" with a sentence about what the
 mod should do — read your GitHub notifications, show a clock, browse a
 folder — and the agent has everything else from AGENTS.md.
 
+If what the mod shows belongs to the workspace — an inbox whose threads
+follow the repo you're in, a review queue, whatever the person last opened
+— say so in that sentence too: AGENTS.md's `tab.state` field is what it
+reaches for, and the mod's state then sticks to the space and comes back
+when the person does. Without it the agent won't know you want that.
+
 The result is the third party's own repo: it depends on tab-host being
 installed to get its button, works without it as a pane, and needs no
 changes to tab-host now or later.

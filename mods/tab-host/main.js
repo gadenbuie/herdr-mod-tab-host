@@ -60,6 +60,18 @@
 // the button and loses it if its own answer says no — a space change never
 // empties the bar and fills it again.
 //
+// `tab.state` names a shared() key the contributor keeps its live state in —
+// what its panel is showing, what the person opened — and this copy keeps one
+// value of that key per space: the value it holds as the person leaves a space
+// is that space's, saved under it, and the space arriving gets its own back
+// (null when it never had any). The contributor never mentions spaces: it
+// writes the key with setShared whenever its state changes and reads it in
+// render, awake or asleep — the key is the whole of its state, so the switch
+// needs nothing from the mod's copy. The key is the mod's to name and keep
+// (`<mod>.state`, the way `tab.badge`'s is); the value is whatever JSON it
+// wants, kept small — an entry past 32 KiB is dropped, because every space's
+// every contributor shares one file.
+//
 // Each space also gets its own panel. One layout serves every space and
 // `layouts/.state` keeps one active child and one hidden flag for all of them,
 // so arriving in a space would show the tab the person left open in the space
@@ -80,7 +92,7 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { layout, run, theme, props, appHome, shared, watchFolder,
+import { layout, run, theme, props, appHome, shared, setShared, watchFolder,
          readTextFile, writeTextFile, nextCommand, exec, spaces } from "herdr";
 import * as fs from "fs/promises";
 
@@ -128,6 +140,7 @@ async function manifests() {
                    icon: typeof tab.icon === "string" ? tab.icon : null,
                    badge: typeof tab.badge === "string" ? tab.badge : null,
                    show: typeof tab.show === "string" ? tab.show : null,
+                   state: typeof tab.state === "string" && tab.state.trim() ? tab.state : null,
                    order: orderOf(tab.order) });
     } catch { /* not a contributor */ }
   }
@@ -171,7 +184,7 @@ function ordered(mani, extra) {
   for (const n of Array.isArray(extra) ? extra : [])
     if (typeof n === "string" && !have.has(n)) {
       have.add(n);
-      list.push({ name: n, title: pretty(n), icon: null, badge: null, order: DEFAULT_ORDER });
+      list.push({ name: n, title: pretty(n), icon: null, badge: null, state: null, order: DEFAULT_ORDER });
     }
   return list.filter((e) => e.name !== "tab-host").sort(byOrder);
 }
@@ -190,14 +203,17 @@ const spaceKey = (s) => [s.id, s.machine ?? "", s.folder ?? ""].join("\u0000");
 const checkKey = (space, text) => spaceKey(space) + "\u0000" + text;
 const activeSpace = () => spaces().find((s) => s.active) ?? null;
 
-// The two things this copy remembers between visits, in localStorage (a file
+// The three things this copy remembers between visits, in localStorage (a file
 // here, which is why it outlives a restart; the keys carry this mod's name
-// because storage is shared): what each space's tab.show answered, and which
-// tab of ours each space had showing. Both are keyed by strings that carry the
-// space's id, machine and folder, so an entry never outlives what it describes
-// — a worktree that becomes another checkout asks again.
+// because storage is shared): what each space's tab.show answered, which
+// tab of ours each space had showing, and what each space's tab.state keys
+// held. All are keyed by strings that carry the space's id, machine and
+// folder, so an entry never outlives what it describes — a worktree that
+// becomes another checkout asks again.
 const ANSWERS = "tab-host.answers";
 const OPEN = "tab-host.open";
+const STATE = "tab-host.state";
+const STATE_MAX = 32768; // chars of JSON per contributor per space; past it the entry is dropped — see swapState()
 const KEEP = 400; // entries per map; the oldest go, so a long-lived install cannot grow forever
 
 function readMap(key) {
@@ -277,6 +293,10 @@ export default class TabHost extends View {
     // spaceKey -> child id. One panel column serves every space, so this is the
     // only place a space's own choice can live — see restore().
     this.open = readMap(OPEN);
+    // What each space's tab.state keys held, spaceKey -> (mod name -> value),
+    // carried across a space change — see swapState().
+    this.states = readMap(STATE);
+    this.restoreTo = null; // the space a state restore is still on its way into — see swapState()
     this.arrive = null;      // { child } while the space just entered is put back
     this.last = null;        // { space, active, shown } as the shown space last was
     this.asked = new Set();  // check keys asked for during this visit
@@ -414,6 +434,9 @@ export default class TabHost extends View {
       // that was its own: by this point the panel may already have been handed
       // to the space arriving.
       this.leaving(this.space);
+      // The tab.state keys a contributor keeps change hands on this same
+      // frame, before this.space moves on — see swapState().
+      this.swapState(this.space, here, cx);
       // A check nobody has started for a space the person is no longer in is
       // not worth running now; one already out keeps its answer, which is that
       // space's memo.
@@ -586,6 +609,80 @@ export default class TabHost extends View {
     const seen = this.last;
     if (!key || !seen || seen.space !== key || !seen.shown) return;
     this.keepTab(key, seen.active.startsWith("tabhost-") ? seen.active : null);
+  }
+
+  // Carry the tab.state keys across a space change: what they hold as the
+  // person leaves is the space being left's, saved under it, and the space
+  // arriving gets its own back — null when it never had any, so a space starts
+  // fresh instead of inheriting the one just left. The contributor's own copy
+  // is out of it entirely, asleep or awake: its state lives in a shared key
+  // (written with setShared, read in render), which is the one thing that can
+  // change hands without it — and the moment a space changes is exactly when
+  // its tab may be hidden. Only the buttons copy carries it, the always-visible
+  // one that answers keys: two copies rendering one space change would read
+  // each other's half-done carry and credit the wrong space with the values in
+  // the key. `from` is the space this copy's last render was of, which is whose
+  // values the keys hold; empty on this copy's first frame (a restart, a hot
+  // reload), where whatever the keys hold is taken as the space in front of
+  // the person's, so a reload mid-visit neither rolls the space back nor hands
+  // its state to the next one.
+  //
+  // The restore writes in a spawned task, out of the render the carry runs
+  // in: setShared re-renders every mod, and one from inside a render would
+  // re-enter this copy's checkSpace mid-carry — and a task is how every mod
+  // here writes shared values (plannotator's badge, from a task, never a
+  // render). While the task is out the keys still physically hold the space
+  // just left's values, so a carry arriving before it lands snapshots the slot
+  // being restored rather than the keys (this.restoreTo); writes a mod makes
+  // in that window land in keys that are about to be replaced anyway, which is
+  // the one small loss this ordering costs.
+  swapState(from, to, cx) {
+    if (!to || from === to) return;
+    if (props()?.buttons !== true) return; // a second copy of this mod: the bar's copy carries
+    const list = Object.values(this.mani).filter((m) => m.state);
+    if (!list.length) return;
+    if (!from) from = to;
+    let changed = false;
+    const had = this.states.get(from) ?? {};
+    for (const m of list) {
+      // What the key holds for this snapshot: the shared key itself, unless a
+      // restore is still on its way into this space's keys — then what they
+      // hold is about to become this space's saved slot, so that is what they
+      // are credited with, not the stale values still sitting in them.
+      const text = JSON.stringify(
+        this.restoreTo === from ? had[m.name] ?? null : shared(m.state) ?? null);
+      // One entry past this size would break the file every map in this mod
+      // shares, so a value too big is not kept: the space starts over next
+      // time, and the log says what was lost and how big.
+      if (text.length > STATE_MAX) {
+        if (had[m.name] !== null) { had[m.name] = null; changed = true; }
+        this.tell("state of " + m.name + " too big to keep (" + text.length + " chars)");
+      } else if (JSON.stringify(had[m.name] ?? null) !== text) {
+        had[m.name] = JSON.parse(text);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.states.set(from, had);
+      writeMap(STATE, this.states);
+    }
+    // The space arriving gets its own back, set only on a change: setShared
+    // re-renders every mod, and the person's own space change already did.
+    const back = this.states.get(to) ?? {};
+    const todo = [];
+    for (const m of list) {
+      const want = back[m.name] ?? null;
+      if (JSON.stringify(shared(m.state) ?? null) !== JSON.stringify(want))
+        todo.push([m.state, want]);
+    }
+    if (todo.length) {
+      this.restoreTo = to;
+      cx?.spawn?.(async () => {
+        for (const [key, want] of todo) setShared(key, want);
+        this.restoreTo = null;
+      });
+    }
+    this.tell("state " + from.replace(/\u0000/g, "·") + " → " + to.replace(/\u0000/g, "·"));
   }
 
   // Keep the stack's children in step with the contributors. The tree that

@@ -87,6 +87,7 @@ Every field but `title` is optional, and the same field under the name
 | `tab.badge` | A count the contributor publishes on a `shared()` key; drawn as a chip after the label. |
 | `tab.order` | A number, smaller further left. Missing sorts as 100, ties fall back to the title — contributors among themselves only. |
 | `tab.show` | A shell string, run as `sh -c` in the shown space's folder on that space's machine; exit 0 draws the button. Absent draws always. |
+| `tab.state` | A `shared()` key the contributor keeps its live state in; tab-host keeps one value of it per space, so the state sticks to the workspace. |
 
 Installing the contributor into `~/.config/herdr-app/mods/<name>/` as a real
 directory is the whole act; tab-host adds the button and the block the moment
@@ -131,6 +132,23 @@ that doesn't appear can be looked up rather than guessed at.
 Each space also comes back to the tab it had open: a tab contributed here
 that was showing when the person left a space is selected and shown again
 when they return, which the one shared panel column cannot do on its own.
+
+### State that sticks to the space
+
+**`tab.state: "<shared key>"`** — for a panel whose view belongs to the
+workspace, like an inbox with the thread the person opened: name a
+`shared()` key, keep your live state in it (write with `setShared` on every
+change, read in `render()`, treat `null` as fresh), and tab-host keeps one
+value of it per space. Switching spaces hands the arriving one its own back
+— keyed the same `id + machine + folder` way the open-tab memory is, so the
+state follows the space and comes back when the person does. The
+contributor's own copy is out of the loop, asleep or awake: a shared key is
+the one thing that can change hands without it, and the moment a space
+changes is exactly when its tab may be hidden — which is why the carry
+lives here rather than in the contributor. Keep the key yours
+(`<mod>.state`) and the value small JSON; an entry past 32 KiB is dropped
+(one file holds every space's every contributor). Each carry is a line in
+`reconcile.log`, `state <space> → <space>`.
 
 ### A key for a tab
 
