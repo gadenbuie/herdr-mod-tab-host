@@ -1,10 +1,11 @@
 # Tab host
 
-A shared tab section for [Herdr](https://herdr.dev): every mod gets its own
+A shared tab section for the [Herdr](https://herdr.dev) desktop app
+(`herdr-app`; written against 0.1.12): every mod gets its own
 button in the tab bar, next to Files and Changes, without one big mod and
 without one layout variant per mod.
 
-![The tab bar: Files and Changes with three contributor buttons beside them](assets/tabs30.png)
+![The tab bar: Files and Changes with three contributor buttons beside them](preview.png)
 
 The layout gives the tab bar one extra block:
 
@@ -49,8 +50,9 @@ Uninstalling the mod takes both away again.
 ## Install
 
 ```sh
-git clone https://github.com/<owner>/herdr-mod-tab-host.git <repo>
-<repo>/install.sh
+git clone https://github.com/gadenbuie/herdr-mod-tab-host.git
+cd herdr-mod-tab-host
+./install.sh
 ```
 
 `install.sh` copies this repo's mods — tab-host alone; the example stays in
@@ -61,7 +63,7 @@ each mod. To watch the whole flow live, copy the example contributor in by
 hand:
 
 ```sh
-rsync -rlpt --delete <repo>/examples/tab-notes/ ~/.config/herdr-app/mods/tab-notes/
+rsync -rlpt --delete examples/tab-notes/ ~/.config/herdr-app/mods/tab-notes/
 ```
 
 Shipped layouts are left alone: Herdr refuses structural changes there and
