@@ -5,7 +5,7 @@ A shared tab section for the [Herdr](https://herdr.dev) desktop app
 button in the tab bar, next to Files and Changes, without one big mod and
 without one layout variant per mod.
 
-![The tab bar: Files and Changes with three contributor buttons beside them](preview.png)
+![tab-host: every mod gets its own tab beside Files and Changes](preview.png)
 
 The layout gives the tab bar one extra block:
 

@@ -12,6 +12,11 @@ may be (herdrdev/herdr-app#246).
 
 ![Tab host](preview.png)
 
+The preview above is drawn; this is the bar as the app really renders it
+(`assets/tab-bar.png`, the example contributor installed):
+
+![The real tab bar: Files and Changes with three contributor buttons](assets/tab-bar.png)
+
 ## What you see
 
 - The tab bar, one 42 px row: the shipped `tabs` block on the left (Files,
