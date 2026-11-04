@@ -52,7 +52,7 @@ Uninstalling the mod takes both away again.
 ```sh
 git clone https://github.com/gadenbuie/herdr-mod-tab-host.git
 cd herdr-mod-tab-host
-./install.sh
+make install   # runs ./install.sh
 ```
 
 `install.sh` copies this repo's mods — tab-host alone; the example stays in
