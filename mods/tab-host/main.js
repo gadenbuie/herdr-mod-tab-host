@@ -879,7 +879,15 @@ export default class TabHost extends View {
           .bg(t.accent).text_color(t.accent_foreground).text_size(9.5)
           .child(n > 9 ? "9+" : String(n))));
     };
+    // The bar's own color: the shipped tab strip paints chrome ("sidebars and
+    // bars"), this block paints nothing and lets the layout's canvas show
+    // through — a near-white over the bar's grey in light themes, a hair off in
+    // dark ones. Painting the row the same token makes one bar of the two; the
+    // bottom hairline is the shipped bar's own, and stops where this block
+    // starts without it.
     return h_flex().size_full().justify_end().px(ROW_PX / 2).gap(3).items_center()
+      .bg(t.chrome)
+      .border_b(1).border_color(t.border)
       .children(entries.map(button));
   }
 }
